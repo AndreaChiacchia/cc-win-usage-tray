@@ -40,6 +40,7 @@ class UsagePopup:
     def __init__(self, root: tk.Tk):
         self.root = root
         self._visible = False
+        self._refreshing = False
         self._on_refresh_cb = None
 
         self.win = tk.Toplevel(root)
@@ -317,6 +318,8 @@ class UsagePopup:
         self.win.after(100, self._check_focus)
 
     def _check_focus(self):
+        if self._refreshing:
+            return
         focused = self.win.focus_get()
         # If focused is None, focus went to another application or the desktop.
         if focused is None:

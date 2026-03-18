@@ -93,6 +93,7 @@ class ClaudeUsageTray:
             return
         self._refreshing = True
         self._was_visible_before_refresh = self.popup.visible
+        self.popup._refreshing = True
         self.root.after(0, self.popup.show_loading)
         if self._tray_icon:
             self._tray_icon.icon = generate_loading_icon()
@@ -158,6 +159,7 @@ class ClaudeUsageTray:
         self._update_tray_icon(accounts)
         if self._was_visible_before_refresh:
             self.popup.show()
+        self.popup._refreshing = False
 
     def _schedule_auto_refresh(self):
         def _auto():

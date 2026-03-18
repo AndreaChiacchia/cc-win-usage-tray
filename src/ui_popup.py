@@ -188,8 +188,8 @@ class UsagePopup:
                     anchor="w",
                 ).pack(fill=tk.X)
             else:
-                for section in acc.usage.sections:
-                    self._add_section(self._content_frame, section)
+                for i, section in enumerate(acc.usage.sections):
+                    self._add_section(self._content_frame, section, top_pad=20 if i == 0 else 2)
             
             # Simple divider between accounts
             tk.Frame(self._content_frame, bg=BORDER_COLOR, height=1).pack(fill=tk.X, pady=2)
@@ -198,10 +198,10 @@ class UsagePopup:
         self._last_updated_var.set(f"Upd: {datetime.now().strftime('%H:%M:%S')}")
         self._reposition_and_resize()
 
-    def _add_section(self, parent: tk.Frame, section: UsageSection):
+    def _add_section(self, parent: tk.Frame, section: UsageSection, top_pad: int = 2):
         """Add a usage section with label, canvas bar, and reset info."""
         frame = tk.Frame(parent, bg=BG_COLOR, pady=0)
-        frame.pack(fill=tk.X)
+        frame.pack(fill=tk.X, pady=(top_pad, 0))
 
         # Section label
         tk.Label(

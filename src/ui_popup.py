@@ -81,8 +81,6 @@ class UsagePopup:
         # Show loading state initially
         self.show_loading()
 
-        # Hide when focus lost
-        self.win.bind("<FocusOut>", self._on_focus_out)
         self.win.protocol("WM_DELETE_WINDOW", self.hide)
 
     def _clear_content(self):
@@ -295,12 +293,45 @@ class UsagePopup:
         else:
             self.show()
 
+    def _start_focus_poll(self):
+        """Start periodic focus checking while popup is visible."""
+        self._poll_focus()
+
+    def _poll_focus(self):
+        """Periodically check if popup still has focus; hide if not."""
+        if not self._visible:
+            return  # Stop polling when hidden
+        if self._refreshing:
+            # Keep polling but don't dismiss during refresh
+            self.win.after(200, self._poll_focus)
+            return
+        focused = self.win.focus_get()
+        if focused is None:
+            self.hide()
+            return
+        # Check if focused widget is inside our popup
+        try:
+            curr = focused
+            while curr:
+                if curr == self.win:
+                    break
+                curr = curr.master
+            else:
+                self.hide()
+                return
+        except Exception:
+            self.hide()
+            return
+        # Still focused — keep polling
+        self.win.after(200, self._poll_focus)
+
     def show(self):
         self._reposition_and_resize()
         self.win.deiconify()
         self.win.lift()
         self.win.focus_force()
         self._visible = True
+        self._start_focus_poll()
 
     def hide(self):
         self.win.withdraw()
@@ -313,32 +344,9 @@ class UsagePopup:
         if self._on_refresh_cb:
             self._on_refresh_cb()
 
-    def _on_focus_out(self, event):
-        # Only hide if focus went outside the popup (not to a child widget)
-        # We delay the check slightly to allow focus to settle (e.g. when clicking Refresh)
-        self.win.after(100, self._check_focus)
-
-    def _check_focus(self):
-        if self._refreshing:
-            return
-        focused = self.win.focus_get()
-        # If focused is None, focus went to another application or the desktop.
-        if focused is None:
-            self.hide()
-            return
-            
-        # Check if the focused widget is a child of self.win
-        try:
-            # Walk up the widget hierarchy
-            curr = focused
-            while curr:
-                if curr == self.win:
-                    return # Focus is still inside the popup
-                curr = curr.master
-            # If we reach here, focus is in the app but not in the popup
-            self.hide()
-        except Exception:
-            self.hide()
+    def finish_refresh(self):
+        """Clear refreshing state. The focus poll handles the rest."""
+        self._refreshing = False
 
     @property
     def visible(self) -> bool:

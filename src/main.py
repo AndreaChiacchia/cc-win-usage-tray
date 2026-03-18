@@ -166,7 +166,7 @@ class ClaudeUsageTray:
         self._update_tray_icon(accounts)
         if self._was_visible_before_refresh:
             self.popup.show()
-        self.popup._refreshing = False
+        self.popup.finish_refresh()
 
     def _schedule_auto_refresh(self):
         def _auto():

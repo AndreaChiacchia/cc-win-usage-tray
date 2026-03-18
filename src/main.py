@@ -114,7 +114,10 @@ class ClaudeUsageTray:
         try:
             email = parse_email(status_text) or "unknown@claude.ai"
             usage_data = parse_usage(usage_text)
-            
+
+            # Load OLD accounts BEFORE saving new data
+            old_accounts = storage.load_all_accounts()
+
             account = AccountUsage(
                 email=email,
                 usage=usage_data,
@@ -127,6 +130,10 @@ class ClaudeUsageTray:
             all_accounts = storage.load_all_accounts()
             for email_key, acc in all_accounts.items():
                 acc.is_active = (email_key == email)
+
+            # Check thresholds and notify
+            from notifier import check_and_notify
+            check_and_notify(old_accounts, all_accounts)
 
             self.root.after(0, lambda: self._apply_data(all_accounts))
         except Exception as e:

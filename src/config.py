@@ -38,3 +38,6 @@ TASKBAR_OFFSET = 48  # pixels above taskbar
 
 # Tray icon size
 ICON_SIZE = 64
+
+# Notification settings
+NOTIFICATION_THRESHOLD_STEP = 10  # Notify every N% (used by notifier.py)

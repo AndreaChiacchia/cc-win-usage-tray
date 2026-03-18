@@ -27,12 +27,6 @@ def _bar_color(percentage: int) -> str:
         return BAR_RED
 
 
-def _ascii_bar(percentage: int, width: int = 48) -> str:
-    """Generate a terminal-style progress bar string."""
-    filled_len = int(round(width * percentage / 100))
-    bar = "█" * filled_len + " " * (width - filled_len)
-    return f"[{bar}]"
-
 
 class UsagePopup:
     """Borderless popup window showing Claude Code usage."""
@@ -205,7 +199,7 @@ class UsagePopup:
         self._reposition_and_resize()
 
     def _add_section(self, parent: tk.Frame, section: UsageSection):
-        """Add a usage section with label, ASCII bar, and reset info."""
+        """Add a usage section with label, canvas bar, and reset info."""
         frame = tk.Frame(parent, bg=BG_COLOR, pady=0)
         frame.pack(fill=tk.X)
 
@@ -218,20 +212,27 @@ class UsagePopup:
             anchor="w",
         ).pack(fill=tk.X)
 
-        # ASCII Progress bar + percentage
+        # Canvas progress bar + percentage
         bar_row = tk.Frame(frame, bg=BG_COLOR)
-        bar_row.pack(fill=tk.X, pady=0)
+        bar_row.pack(fill=tk.X, pady=(2, 0))
 
         color = _bar_color(section.percentage)
-        
-        # ASCII Bar Label
-        tk.Label(
-            bar_row,
-            text=_ascii_bar(section.percentage),
-            bg=BG_COLOR, fg=color,
-            font=TERMINAL_FONT_BOLD,
-            anchor="w",
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        pct = section.percentage
+
+        BAR_HEIGHT = 18
+        canvas = tk.Canvas(bar_row, height=BAR_HEIGHT, bg=BAR_BG_COLOR,
+                           highlightthickness=0)
+        canvas.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def _draw_bar(event=None, _canvas=canvas, _pct=pct, _color=color, _h=BAR_HEIGHT):
+            w = _canvas.winfo_width()
+            if w <= 1:
+                w = 300
+            _canvas.delete("all")
+            filled_w = int(w * _pct / 100)
+            _canvas.create_rectangle(0, 0, filled_w, _h, fill=_color, outline="")
+
+        canvas.bind("<Configure>", _draw_bar)
 
         tk.Label(
             bar_row,
@@ -264,7 +265,7 @@ class UsagePopup:
 
         # Separator line (Double-dashed for bolder terminal feel)
         sep_frame = tk.Frame(frame, bg=BG_COLOR, height=1)
-        sep_frame.pack(fill=tk.X, pady=(6, 0))
+        sep_frame.pack(fill=tk.X, pady=(2, 0))
         tk.Label(
             sep_frame,
             text="=" * 80,

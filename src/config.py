@@ -1,0 +1,40 @@
+"""Configuration constants for Claude Usage Tray."""
+
+# Claude CLI command (must be on PATH)
+CLAUDE_CMD = "claude"
+
+# Auto-refresh interval in milliseconds (5 minutes)
+REFRESH_INTERVAL_MS = 300_000
+
+# PTY timeout in seconds
+PTY_TIMEOUT_S = 45
+
+# PTY terminal dimensions (match cc-usage-bar)
+PTY_COLS = 68
+PTY_ROWS = 24
+
+# Color thresholds (percentage)
+COLOR_GREEN_MAX = 50    # 0-49%  -> green
+COLOR_YELLOW_MAX = 80   # 50-79% -> yellow
+                        # 80%+   -> red
+
+# UI Colors (Claude-like dark theme)
+BG_COLOR = "#1e1e1e"
+FG_COLOR = "#e5e5e5"
+FG_DIM_COLOR = "#8b8b8b"
+BORDER_COLOR = "#333333"
+BAR_BG_COLOR = "#2d2d2d"
+BAR_GREEN = "#10b981"   # Emerald green
+BAR_YELLOW = "#f59e0b"  # Amber
+BAR_RED = "#ef4444"     # Vibrant red
+BUTTON_BG = "#2d2d2d"
+BUTTON_FG = "#e5e5e5"
+BUTTON_ACTIVE_BG = "#3d3d3d"
+
+# Popup dimensions
+POPUP_WIDTH = 520
+POPUP_PADDING = 24
+TASKBAR_OFFSET = 48  # pixels above taskbar
+
+# Tray icon size
+ICON_SIZE = 64

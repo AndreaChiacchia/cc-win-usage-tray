@@ -40,6 +40,10 @@ class ClaudeUsageTray:
         # --- Initial data load ---
         self.root.after(500, self._trigger_refresh)
 
+        # --- Startup notification ---
+        from notifier import notify_startup
+        notify_startup()
+
     # ------------------------------------------------------------------
     # Tray icon management
     # ------------------------------------------------------------------

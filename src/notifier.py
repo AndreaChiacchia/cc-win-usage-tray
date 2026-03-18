@@ -108,12 +108,36 @@ def _check_section(email: str, label: str, old_pct: int, new_pct: int):
         _last_notified[key] = new_threshold
 
 
+def _get_icon_path() -> str:
+    """Get absolute path to claude_icon.png, supporting PyInstaller bundles."""
+    if getattr(sys, '_MEIPASS', None):
+        return os.path.join(sys._MEIPASS, 'claude_icon.png')
+    return os.path.join(os.path.dirname(__file__), 'claude_icon.png')
+
+
+def notify_startup():
+    """Send a startup notification."""
+    toast = Notification(
+        app_id=APP_ID,
+        title="Claude Usage Tray",
+        msg="Notifications active. Monitoring usage.",
+        icon=_get_icon_path(),
+        duration="short",
+    )
+    toast.set_audio(audio.Default, loop=False)
+    try:
+        toast.show()
+    except Exception as e:
+        _log_debug(f"notify_startup toast.show() failed: {e}")
+
+
 def _fire_notification(email: str, label: str, pct: int, threshold: int):
     """Send a Windows toast notification."""
     toast = Notification(
         app_id=APP_ID,
         title=f"Usage Alert: {threshold}%",
         msg=f"{label} for {email} has reached {pct}%",
+        icon=_get_icon_path(),
         duration="short",
     )
     toast.set_audio(audio.Default, loop=False)

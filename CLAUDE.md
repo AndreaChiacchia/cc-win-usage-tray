@@ -15,11 +15,10 @@ Follow SemVer:
 - **MINOR** — new features (or a commit that includes both features and fixes)
 - **PATCH** — bug fixes only
 
-**Version bump at commit time only.** Do not bump during development — decide the final version when the user asks to commit:
-1. Review all staged changes and determine the appropriate bump level.
-2. If the commit includes both bug fixes and new features, bump MINOR (the higher level wins).
-3. Update `src/version.py`, stage it with the rest, and commit everything together.
-4. Create and push the tag: `git tag v{version} && git push origin v{version}`.
+**Version bump and tagging happen on `main` only.** On feature branches, commit without bumping the version:
+1. Commit code changes normally — do not update `src/version.py` on feature branches.
+2. When merging to `main`: review all changes since the last version bump, determine the appropriate SemVer level (higher level wins if mixed), update `src/version.py`, and include it in the merge commit.
+3. After pushing to `main`, create and push the tag: `git tag v{version} && git push origin v{version}`.
 
 ## Setup & Running
 

@@ -51,3 +51,14 @@ def set_notification_threshold(email: str, section_label: str, val: int):
         s[email]["notification_thresholds"] = {}
     s[email]["notification_thresholds"][section_label] = val
     save_settings(s)
+
+
+def get_notifications_enabled(email: str) -> bool:
+    s = load_settings()
+    return s.get(email, {}).get("notifications_enabled", True)
+
+
+def set_notifications_enabled(email: str, val: bool):
+    s = load_settings()
+    s.setdefault(email, {})["notifications_enabled"] = val
+    save_settings(s)

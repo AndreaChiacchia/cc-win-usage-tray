@@ -54,11 +54,34 @@ class UsagePopup:
         self._inner = tk.Frame(self._outer, bg=BG_COLOR, padx=POPUP_PADDING, pady=POPUP_PADDING)
         self._inner.pack(fill=tk.BOTH, expand=True)
 
+        # Top bar: title + close button
+        self._top = tk.Frame(self._inner, bg=BG_COLOR)
+        self._top.pack(fill=tk.X, pady=(0, POPUP_PADDING // 2))
+
+        tk.Label(
+            self._top,
+            text="Claude Code Usage",
+            bg=BG_COLOR, fg=FG_COLOR,
+            font=TERMINAL_FONT_BOLD,
+            anchor="w",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        tk.Button(
+            self._top,
+            text="✕",
+            bg=BUTTON_BG, fg=BUTTON_FG,
+            activebackground=BUTTON_ACTIVE_BG, activeforeground=BUTTON_FG,
+            relief=tk.FLAT, padx=6, pady=2,
+            font=TERMINAL_FONT,
+            cursor="hand2",
+            command=self.hide,
+        ).pack(side=tk.RIGHT)
+
         # Content area (will be rebuilt on each update)
         self._content_frame = tk.Frame(self._inner, bg=BG_COLOR)
         self._content_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Bottom bar: last updated + refresh button
+        # Bottom bar: version + refresh button
         self._bottom = tk.Frame(self._inner, bg=BG_COLOR)
         self._bottom.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
 
@@ -135,15 +158,6 @@ class UsagePopup:
         if not accounts:
             self.show_error("No usage data available")
             return
-
-        # Overall Title
-        tk.Label(
-            self._content_frame,
-            text="Claude Code Usage",
-            bg=BG_COLOR, fg=FG_COLOR,
-            font=TERMINAL_FONT_BOLD,
-            anchor="w",
-        ).pack(fill=tk.X, pady=(0, POPUP_PADDING // 2))
 
         # Sort accounts to put active one first
         sorted_emails = sorted(accounts.keys(), key=lambda e: (not accounts[e].is_active, e))
@@ -415,7 +429,21 @@ class UsagePopup:
         scale.set(current_val)
         scale.pack(fill=tk.X)
 
-        self._center_window(win, 380, 180)
+        notif_var = tk.BooleanVar(value=settings_mod.get_notifications_enabled(email))
+        notif_cb = tk.Checkbutton(
+            inner,
+            text="Notifications enabled",
+            variable=notif_var,
+            bg=BG_COLOR, fg=FG_COLOR,
+            selectcolor=BAR_BG_COLOR,
+            activebackground=BG_COLOR, activeforeground=FG_COLOR,
+            font=TERMINAL_FONT,
+            anchor="w",
+            command=lambda: settings_mod.set_notifications_enabled(email, notif_var.get()),
+        )
+        notif_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
+
+        self._center_window(win, 380, 220)
         win.focus_force()
 
     def _open_threshold_settings(self, email: str, section_label: str):

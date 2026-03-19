@@ -77,6 +77,8 @@ def check_and_notify(old_accounts: dict[str, AccountUsage],
                      new_accounts: dict[str, AccountUsage]):
     """Compare old vs new usage and fire notifications for crossed thresholds."""
     for email, new_acc in new_accounts.items():
+        if not settings_mod.get_notifications_enabled(email):
+            continue
         if new_acc.usage.error:
             continue
         old_acc = old_accounts.get(email)

@@ -3,6 +3,7 @@ import os
 import sys
 from winotify import Notification, audio
 from usage_parser import AccountUsage
+import settings as settings_mod
 
 
 def _log_debug(msg: str):
@@ -96,12 +97,13 @@ def _get_old_percentage(old_acc: AccountUsage | None, label: str) -> int:
 
 
 def _check_section(email: str, label: str, old_pct: int, new_pct: int):
-    """Fire notification if a 10% boundary was crossed upward."""
+    """Fire notification if a threshold boundary was crossed upward."""
     key = (email, label)
-    last = _last_notified.get(key, (old_pct // THRESHOLD_STEP) * THRESHOLD_STEP)
+    threshold_step = settings_mod.get_notification_threshold(email, label)
+    last = _last_notified.get(key, (old_pct // threshold_step) * threshold_step)
 
     # Find the highest threshold crossed
-    new_threshold = (new_pct // THRESHOLD_STEP) * THRESHOLD_STEP
+    new_threshold = (new_pct // threshold_step) * threshold_step
 
     if new_threshold > last and new_threshold > 0:
         _fire_notification(email, label, new_pct, new_threshold)
@@ -131,12 +133,20 @@ def notify_startup():
         _log_debug(f"notify_startup toast.show() failed: {e}")
 
 
+_LABEL_TO_TITLE = {
+    "Current session": "Session usage at",
+    "Current week": "Weekly usage at",
+    "Extra usage": "Extra usage at",
+}
+
+
 def _fire_notification(email: str, label: str, pct: int, threshold: int):
     """Send a Windows toast notification."""
+    title_prefix = _LABEL_TO_TITLE.get(label, f"{label} at")
     toast = Notification(
         app_id=APP_ID,
-        title=f"Usage Alert: {threshold}%",
-        msg=f"{label} for {email} has reached {pct}%",
+        title=f"{title_prefix} {pct}%",
+        msg=f"{email} -> {pct}%",
         icon=_get_icon_path(),
         duration="short",
     )

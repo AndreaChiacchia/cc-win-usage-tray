@@ -8,10 +8,10 @@ import pystray
 
 from datetime import datetime
 
-from config import REFRESH_INTERVAL_MS
 from claude_runner import run_usage_threaded
 from usage_parser import parse_usage, parse_email, UsageData, AccountUsage
 import storage
+import settings as settings_mod
 from ui_popup import UsagePopup
 from icon_generator import generate_icon, generate_loading_icon, generate_error_icon
 
@@ -25,6 +25,7 @@ class ClaudeUsageTray:
 
         self.popup = UsagePopup(self.root)
         self.popup.set_refresh_callback(self._trigger_refresh)
+        self.popup.set_refresh_interval_callback(self._on_refresh_interval_changed)
 
         # --- Tray icon ---
         self._tray_icon: pystray.Icon | None = None
@@ -33,6 +34,8 @@ class ClaudeUsageTray:
 
         # --- Refresh state ---
         self._was_visible_before_refresh = False
+        self._active_email: str = ""
+        self._auto_refresh_id: str | None = None
 
         # --- Auto-refresh ---
         self._schedule_auto_refresh()
@@ -117,6 +120,7 @@ class ClaudeUsageTray:
 
         try:
             email = parse_email(status_text) or "unknown@claude.ai"
+            self._active_email = email
             usage_data = parse_usage(usage_text)
 
             # Load OLD accounts BEFORE saving new data
@@ -173,11 +177,19 @@ class ClaudeUsageTray:
         self.popup.finish_refresh()
 
     def _schedule_auto_refresh(self):
+        interval_ms = settings_mod.get_refresh_interval_minutes(self._active_email) * 60_000
+
         def _auto():
             self._trigger_refresh()
             self._schedule_auto_refresh()
 
-        self.root.after(REFRESH_INTERVAL_MS, _auto)
+        self._auto_refresh_id = self.root.after(interval_ms, _auto)
+
+    def _on_refresh_interval_changed(self):
+        if self._auto_refresh_id is not None:
+            self.root.after_cancel(self._auto_refresh_id)
+            self._auto_refresh_id = None
+        self._schedule_auto_refresh()
 
     # ------------------------------------------------------------------
     # Menu actions (called from pystray thread — must be thread-safe)

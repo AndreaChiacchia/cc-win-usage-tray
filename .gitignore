@@ -12,6 +12,7 @@ usage_output_utf8.txt
 usage_output.txt
 usage_output_debug.txt
 accounts_usage.json
+user_settings.json
 
 # Claude local settings
 .claude/

@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from datetime import datetime
 
+import settings as settings_mod
 from config import (
     BG_COLOR, FG_COLOR, FG_DIM_COLOR, BORDER_COLOR,
     BAR_BG_COLOR, BAR_GREEN, BAR_YELLOW, BAR_RED,
@@ -36,6 +37,8 @@ class UsagePopup:
         self._visible = False
         self._refreshing = False
         self._on_refresh_cb = None
+        self._on_refresh_interval_changed_cb = None
+        self._settings_windows: dict[str, tk.Toplevel] = {}
 
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
@@ -148,12 +151,12 @@ class UsagePopup:
 
         for email in sorted_emails:
             acc = accounts[email]
-            
+
             # Account Header
             header_text = f"> {email}"
             if not acc.is_active:
                 header_text += " ⚠️"
-            
+
             tk.Label(
                 self._content_frame,
                 text=header_text,
@@ -162,20 +165,31 @@ class UsagePopup:
                 anchor="w",
             ).pack(fill=tk.X, pady=(4, 0))
 
-            # Timestamp for this account
+            # Timestamp row with cog for account settings
             try:
                 dt = datetime.fromisoformat(acc.last_updated)
                 ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 ts_str = acc.last_updated
-            
+
+            sync_row = tk.Frame(self._content_frame, bg=BG_COLOR)
+            sync_row.pack(fill=tk.X)
             tk.Label(
-                self._content_frame,
+                sync_row,
                 text=f"  Last sync: {ts_str}",
                 bg=BG_COLOR, fg=FG_DIM_COLOR,
                 font=TERMINAL_FONT,
                 anchor="w",
-            ).pack(fill=tk.X)
+            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            cog_acct = tk.Label(
+                sync_row,
+                text="⚙",
+                bg=BG_COLOR, fg=FG_DIM_COLOR,
+                font=TERMINAL_FONT,
+                cursor="hand2",
+            )
+            cog_acct.pack(side=tk.RIGHT)
+            cog_acct.bind("<Button-1>", lambda e, em=email: self._open_account_settings(em))
 
             if acc.usage.error:
                 tk.Label(
@@ -187,8 +201,12 @@ class UsagePopup:
                 ).pack(fill=tk.X)
             else:
                 for i, section in enumerate(acc.usage.sections):
-                    self._add_section(self._content_frame, section, top_pad=20 if i == 0 else 2)
-            
+                    self._add_section(
+                        self._content_frame, section,
+                        email=email,
+                        top_pad=20 if i == 0 else 2,
+                    )
+
             # Simple divider between accounts
             tk.Frame(self._content_frame, bg=BORDER_COLOR, height=1).pack(fill=tk.X, pady=2)
 
@@ -196,7 +214,7 @@ class UsagePopup:
         self._last_updated_var.set(f"Upd: {datetime.now().strftime('%H:%M:%S')}")
         self._reposition_and_resize()
 
-    def _add_section(self, parent: tk.Frame, section: UsageSection, top_pad: int = 2):
+    def _add_section(self, parent: tk.Frame, section: UsageSection, email: str, top_pad: int = 2):
         """Add a usage section with label, canvas bar, and reset info."""
         frame = tk.Frame(parent, bg=BG_COLOR, pady=0)
         frame.pack(fill=tk.X, pady=(top_pad, 0))
@@ -241,15 +259,36 @@ class UsagePopup:
             anchor="e",
         ).pack(side=tk.RIGHT)
 
-        # Reset info
+        # Reset info row with cog, or standalone cog when reset_info is absent
+        _em = email
+        _sl = section.label
         if section.reset_info:
+            reset_row = tk.Frame(frame, bg=BG_COLOR)
+            reset_row.pack(fill=tk.X, pady=(2, 0))
             tk.Label(
-                frame,
+                reset_row,
                 text=section.reset_info,
                 bg=BG_COLOR, fg=FG_DIM_COLOR,
                 font=TERMINAL_FONT,
                 anchor="w",
-            ).pack(fill=tk.X, pady=(2, 0))
+            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            cog = tk.Label(
+                reset_row, text="⚙",
+                bg=BG_COLOR, fg=FG_DIM_COLOR,
+                font=TERMINAL_FONT, cursor="hand2",
+            )
+            cog.pack(side=tk.RIGHT)
+            cog.bind("<Button-1>", lambda e, em=_em, sl=_sl: self._open_threshold_settings(em, sl))
+        else:
+            cog_row = tk.Frame(frame, bg=BG_COLOR)
+            cog_row.pack(fill=tk.X, pady=(2, 0))
+            cog = tk.Label(
+                cog_row, text="⚙",
+                bg=BG_COLOR, fg=FG_DIM_COLOR,
+                font=TERMINAL_FONT, cursor="hand2", anchor="w",
+            )
+            cog.pack(side=tk.LEFT)
+            cog.bind("<Button-1>", lambda e, em=_em, sl=_sl: self._open_threshold_settings(em, sl))
 
         # Spent info (Extra usage only)
         if section.spent_info:
@@ -272,6 +311,163 @@ class UsagePopup:
             pady=0,
             anchor="n",
         ).pack(fill=tk.X)
+
+    # ------------------------------------------------------------------
+    # Settings windows
+    # ------------------------------------------------------------------
+
+    def _make_settings_window(self, key: str, title: str):
+        """Create a borderless settings window. Returns (win, inner, close_fn) or None if already open."""
+        existing = self._settings_windows.get(key)
+        if existing and existing.winfo_exists():
+            existing.lift()
+            existing.focus_force()
+            return None
+
+        win = tk.Toplevel(self.root)
+        win.overrideredirect(True)
+        win.configure(bg=BG_COLOR)
+        win.attributes("-topmost", True)
+        self._settings_windows[key] = win
+
+        def _close():
+            win.destroy()
+            self._settings_windows.pop(key, None)
+
+        win.bind("<Escape>", lambda e: _close())
+
+        outer = tk.Frame(win, bg=BORDER_COLOR, padx=1, pady=1)
+        outer.pack(fill=tk.BOTH, expand=True)
+        inner = tk.Frame(outer, bg=BG_COLOR, padx=POPUP_PADDING, pady=POPUP_PADDING)
+        inner.pack(fill=tk.BOTH, expand=True)
+
+        # Title bar with close button
+        title_bar = tk.Frame(inner, bg=BG_COLOR)
+        title_bar.pack(fill=tk.X, pady=(0, POPUP_PADDING // 2))
+        tk.Button(
+            title_bar,
+            text="✕",
+            bg=BUTTON_BG, fg=BUTTON_FG,
+            activebackground=BUTTON_ACTIVE_BG, activeforeground=BUTTON_FG,
+            relief=tk.FLAT, padx=6, pady=2,
+            font=TERMINAL_FONT,
+            cursor="hand2",
+            command=_close,
+        ).pack(side=tk.RIGHT)
+        tk.Label(
+            title_bar,
+            text=title,
+            bg=BG_COLOR, fg=FG_COLOR,
+            font=TERMINAL_FONT_BOLD,
+            anchor="w",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        return win, inner, _close
+
+    def _center_window(self, win: tk.Toplevel, w: int, h: int):
+        win.update_idletasks()
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _open_account_settings(self, email: str):
+        result = self._make_settings_window(f"account_{email}", "Auto-Refresh Settings")
+        if result is None:
+            return
+        win, inner, _close = result
+
+        tk.Label(
+            inner,
+            text=email,
+            bg=BG_COLOR, fg=FG_DIM_COLOR,
+            font=TERMINAL_FONT,
+            anchor="w",
+        ).pack(fill=tk.X)
+
+        current_val = settings_mod.get_refresh_interval_minutes(email)
+        val_label = tk.Label(
+            inner,
+            text=f"Update every {current_val} minutes",
+            bg=BG_COLOR, fg=FG_COLOR,
+            font=TERMINAL_FONT,
+            anchor="w",
+        )
+        val_label.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 4))
+
+        def on_change(v):
+            val = int(float(v))
+            val_label.config(text=f"Update every {val} minutes")
+            settings_mod.set_refresh_interval_minutes(email, val)
+            if self._on_refresh_interval_changed_cb:
+                self._on_refresh_interval_changed_cb()
+
+        scale = tk.Scale(
+            inner,
+            from_=1, to=30, resolution=1,
+            orient=tk.HORIZONTAL,
+            command=on_change,
+            bg=BG_COLOR, fg=FG_COLOR,
+            troughcolor=BAR_BG_COLOR,
+            highlightthickness=0,
+            font=TERMINAL_FONT,
+            showvalue=False,
+        )
+        scale.set(current_val)
+        scale.pack(fill=tk.X)
+
+        self._center_window(win, 380, 180)
+        win.focus_force()
+
+    def _open_threshold_settings(self, email: str, section_label: str):
+        key = f"threshold_{email}_{section_label}"
+        result = self._make_settings_window(key, f"Notification Threshold — {section_label}")
+        if result is None:
+            return
+        win, inner, _close = result
+
+        tk.Label(
+            inner,
+            text=email,
+            bg=BG_COLOR, fg=FG_DIM_COLOR,
+            font=TERMINAL_FONT,
+            anchor="w",
+        ).pack(fill=tk.X)
+
+        current_val = settings_mod.get_notification_threshold(email, section_label)
+        val_label = tk.Label(
+            inner,
+            text=f"Notify every {current_val}%",
+            bg=BG_COLOR, fg=FG_COLOR,
+            font=TERMINAL_FONT,
+            anchor="w",
+        )
+        val_label.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 4))
+
+        def on_change(v):
+            val = int(float(v))
+            val_label.config(text=f"Notify every {val}%")
+            settings_mod.set_notification_threshold(email, section_label, val)
+
+        scale = tk.Scale(
+            inner,
+            from_=1, to=100, resolution=1,
+            orient=tk.HORIZONTAL,
+            command=on_change,
+            bg=BG_COLOR, fg=FG_COLOR,
+            troughcolor=BAR_BG_COLOR,
+            highlightthickness=0,
+            font=TERMINAL_FONT,
+            showvalue=False,
+        )
+        scale.set(current_val)
+        scale.pack(fill=tk.X)
+
+        self._center_window(win, 380, 180)
+        win.focus_force()
+
+    # ------------------------------------------------------------------
 
     def _reposition_and_resize(self):
         """Position popup in bottom-right corner, above taskbar."""
@@ -309,11 +505,12 @@ class UsagePopup:
         if focused is None:
             self.hide()
             return
-        # Check if focused widget is inside our popup
+        # Allow focus in our popup or any open settings window
+        allowed = {self.win} | {sw for sw in self._settings_windows.values() if sw.winfo_exists()}
         try:
             curr = focused
             while curr:
-                if curr == self.win:
+                if curr in allowed:
                     break
                 curr = curr.master
             else:
@@ -339,6 +536,9 @@ class UsagePopup:
 
     def set_refresh_callback(self, callback):
         self._on_refresh_cb = callback
+
+    def set_refresh_interval_callback(self, callback):
+        self._on_refresh_interval_changed_cb = callback
 
     def _on_refresh(self):
         if self._on_refresh_cb:

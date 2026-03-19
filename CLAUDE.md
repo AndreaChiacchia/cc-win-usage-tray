@@ -8,6 +8,8 @@ A Windows system tray application that monitors Claude Code usage (session, week
 
 ## Versioning
 
+> **MANDATORY — do this before every commit, no exceptions.**
+
 Version source: `src/version.py` (`__version__ = "x.y.z"`).
 
 Follow SemVer:
@@ -15,7 +17,12 @@ Follow SemVer:
 - **MINOR** — new features, backwards-compatible
 - **PATCH** — bug fixes
 
-**Before committing**: check if the change warrants a version bump. If so, update `src/version.py` and create a git tag: `git tag v{version}`.
+**Required steps on every commit:**
+1. Decide if the change warrants a bump (features → MINOR, fixes → PATCH).
+2. If yes: update `src/version.py`, then commit the version file together with the changes.
+3. Create and push the tag: `git tag v{version} && git push origin v{version}`.
+
+Never commit code changes without completing these steps first.
 
 ## Setup & Running
 

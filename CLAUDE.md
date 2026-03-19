@@ -8,21 +8,17 @@ A Windows system tray application that monitors Claude Code usage (session, week
 
 ## Versioning
 
-> **MANDATORY — do this before every commit, no exceptions.**
-
 Version source: `src/version.py` (`__version__ = "x.y.z"`).
 
 Follow SemVer:
 - **MAJOR** — breaking changes
-- **MINOR** — new features, backwards-compatible
-- **PATCH** — bug fixes
+- **MINOR** — new features (or a commit that includes both features and fixes)
+- **PATCH** — bug fixes only
 
-**Required steps on every commit:**
-1. Decide if the change warrants a bump (features → MINOR, fixes → PATCH).
-2. If yes: update `src/version.py`, then commit the version file together with the changes.
-3. Create and push the tag: `git tag v{version} && git push origin v{version}`.
-
-Never commit code changes without completing these steps first.
+**Version bump and tagging happen on `main` only.** On feature branches, commit without bumping the version:
+1. Commit code changes normally — do not update `src/version.py` on feature branches.
+2. When merging to `main`: review all changes since the last version bump, determine the appropriate SemVer level (higher level wins if mixed), update `src/version.py`, and include it in the merge commit.
+3. After pushing to `main`, create and push the tag: `git tag v{version} && git push origin v{version}`.
 
 ## Setup & Running
 

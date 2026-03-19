@@ -408,9 +408,12 @@ class UsagePopup:
         )
         val_label.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 4))
 
-        def on_change(v):
+        def on_slide(v):
             val = int(float(v))
             val_label.config(text=f"Update every {val} minutes")
+
+        def on_release(event=None):
+            val = int(scale.get())
             settings_mod.set_refresh_interval_minutes(email, val)
             if self._on_refresh_interval_changed_cb:
                 self._on_refresh_interval_changed_cb()
@@ -419,7 +422,7 @@ class UsagePopup:
             inner,
             from_=1, to=30, resolution=1,
             orient=tk.HORIZONTAL,
-            command=on_change,
+            command=on_slide,
             bg=BG_COLOR, fg=FG_COLOR,
             troughcolor=BAR_BG_COLOR,
             highlightthickness=0,
@@ -427,6 +430,7 @@ class UsagePopup:
             showvalue=False,
         )
         scale.set(current_val)
+        scale.bind("<ButtonRelease-1>", on_release)
         scale.pack(fill=tk.X)
 
         notif_var = tk.BooleanVar(value=settings_mod.get_notifications_enabled(email))
@@ -548,13 +552,18 @@ class UsagePopup:
         # Still focused — keep polling
         self.win.after(200, self._poll_focus)
 
-    def show(self):
+    def show(self, steal_focus: bool = True):
         self._reposition_and_resize()
-        self.win.deiconify()
-        self.win.lift()
-        self.win.focus_force()
+        if steal_focus:
+            self.win.deiconify()
+            self.win.lift()
+            self.win.focus_force()
+            self._start_focus_poll()
+        else:
+            # Window is already deiconified (was visible before refresh).
+            # Just ensure topmost — no deiconify() to avoid focus steal.
+            self.win.attributes("-topmost", True)
         self._visible = True
-        self._start_focus_poll()
 
     def hide(self):
         self.win.withdraw()

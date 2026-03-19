@@ -12,6 +12,7 @@ from claude_runner import run_usage_threaded
 from usage_parser import parse_usage, parse_email, UsageData, AccountUsage
 import storage
 import settings as settings_mod
+from startup import is_startup_enabled, set_startup_enabled
 from ui_popup import UsagePopup
 from icon_generator import generate_icon, generate_loading_icon, generate_error_icon
 
@@ -55,6 +56,9 @@ class ClaudeUsageTray:
         return pystray.Menu(
             pystray.MenuItem("Show Usage", self._show_usage_menu),
             pystray.MenuItem("Refresh Now", self._refresh_menu),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Start on Windows startup", self._toggle_startup,
+                             checked=lambda item: is_startup_enabled()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
@@ -101,7 +105,8 @@ class ClaudeUsageTray:
         self._refreshing = True
         self._was_visible_before_refresh = self.popup.visible
         self.popup._refreshing = True
-        self.root.after(0, self.popup.show_loading)
+        if self.popup.visible:
+            self.root.after(0, self.popup.show_loading)
         if self._tray_icon:
             self._tray_icon.icon = generate_loading_icon()
             self._tray_icon.title = "Claude Usage — Loading..."
@@ -121,6 +126,8 @@ class ClaudeUsageTray:
         try:
             email = parse_email(status_text) or "unknown@claude.ai"
             self._active_email = email
+            # Re-schedule with the correct per-account interval (first schedule used "" email)
+            self.root.after(0, self._on_refresh_interval_changed)
             usage_data = parse_usage(usage_text)
 
             # Load OLD accounts BEFORE saving new data
@@ -173,7 +180,7 @@ class ClaudeUsageTray:
         self.popup.show_usage(accounts)
         self._update_tray_icon(accounts)
         if self._was_visible_before_refresh:
-            self.popup.show()
+            self.popup.show(steal_focus=False)
         self.popup.finish_refresh()
 
     def _schedule_auto_refresh(self):
@@ -194,6 +201,9 @@ class ClaudeUsageTray:
     # ------------------------------------------------------------------
     # Menu actions (called from pystray thread — must be thread-safe)
     # ------------------------------------------------------------------
+
+    def _toggle_startup(self, icon=None, item=None):
+        set_startup_enabled(not is_startup_enabled())
 
     def _show_usage_menu(self, icon=None, item=None):
         self.root.after(0, self._show_popup)
@@ -219,6 +229,8 @@ class ClaudeUsageTray:
     # ------------------------------------------------------------------
 
     def _quit(self, icon=None, item=None):
+        from claude_runner import close_session
+        close_session()
         if self._tray_icon:
             self._tray_icon.stop()
         self.root.after(0, self.root.quit)

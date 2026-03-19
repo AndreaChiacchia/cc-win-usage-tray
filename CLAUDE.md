@@ -15,10 +15,15 @@ Follow SemVer:
 - **MINOR** — new features (or a commit that includes both features and fixes)
 - **PATCH** — bug fixes only
 
-**Version bump and tagging happen on `main` only.** On feature branches, commit without bumping the version:
-1. Commit code changes normally — do not update `src/version.py` on feature branches.
-2. When merging to `main`: review all changes since the last version bump, determine the appropriate SemVer level (higher level wins if mixed), update `src/version.py`, and include it in the merge commit.
-3. After pushing to `main`, create and push the tag: `git tag v{version} && git push origin v{version}`.
+**Version bump and tagging happen on `main` only.** On feature branches, commit without bumping the version.
+
+**Merge procedure (staging → main):**
+1. Determine the SemVer level from commits since the last bump (higher level wins if mixed).
+2. Bump `src/version.py` on `staging` and commit it there.
+3. Push `staging` to remote.
+4. Switch to `main`, merge `staging`.
+5. Push `main`.
+6. Tag on `main` and push the tag: `git tag v{version} && git push origin v{version}`.
 
 ## Setup & Running
 

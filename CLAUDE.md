@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Windows system tray application that monitors Claude Code usage (session, weekly, extra) by spawning the Claude Code CLI in a PTY, sending `/usage`, and parsing the output. Displays a color-coded popup and tray icon.
 
+## Versioning
+
+Version source: `src/version.py` (`__version__ = "x.y.z"`).
+
+Follow SemVer:
+- **MAJOR** — breaking changes
+- **MINOR** — new features, backwards-compatible
+- **PATCH** — bug fixes
+
+**Before committing**: check if the change warrants a version bump. If so, update `src/version.py` and create a git tag: `git tag v{version}`.
+
 ## Setup & Running
 
 All source files live in `src/`. Run from there:
@@ -34,7 +45,7 @@ Output: `dist/ClaudeUsageTray.exe` (single-file, no console window).
 
 ## Architecture
 
-The app is split into five modules, all in `src/`:
+The app is split into modules, all in `src/`:
 
 | Module | Responsibility |
 |---|---|
@@ -44,6 +55,9 @@ The app is split into five modules, all in `src/`:
 | `ui_popup.py` | Borderless Tkinter popup positioned above the taskbar; rebuilt on each refresh |
 | `icon_generator.py` | Generates 64×64 RGBA tray icons (normal/loading/error) using Pillow |
 | `config.py` | All constants: timeouts, colors, dimensions, refresh interval |
+| `notifier.py` | Windows toast notifications for usage threshold crossings |
+| `settings.py` | Per-account persistent settings (refresh interval, notification threshold) |
+| `version.py` | Single source of truth for the app version (`__version__`) |
 
 ### Threading model
 

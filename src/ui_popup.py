@@ -5,6 +5,7 @@ from tkinter import ttk
 from datetime import datetime
 
 import settings as settings_mod
+from version import __version__
 from config import (
     BG_COLOR, FG_COLOR, FG_DIM_COLOR, BORDER_COLOR,
     BAR_BG_COLOR, BAR_GREEN, BAR_YELLOW, BAR_RED,
@@ -61,10 +62,9 @@ class UsagePopup:
         self._bottom = tk.Frame(self._inner, bg=BG_COLOR)
         self._bottom.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
 
-        self._last_updated_var = tk.StringVar(value="")
         tk.Label(
             self._bottom,
-            textvariable=self._last_updated_var,
+            text=f"v{__version__}",
             bg=BG_COLOR, fg=FG_DIM_COLOR,
             font=TERMINAL_FONT,
         ).pack(side=tk.LEFT)
@@ -126,7 +126,6 @@ class UsagePopup:
         ).pack(fill=tk.X)
 
         self._refresh_btn.configure(state=tk.NORMAL)
-        self._last_updated_var.set(f"Fail: {datetime.now().strftime('%H:%M:%S')}")
         self._reposition_and_resize()
 
     def show_usage(self, accounts: dict[str, AccountUsage]):
@@ -211,7 +210,6 @@ class UsagePopup:
             tk.Frame(self._content_frame, bg=BORDER_COLOR, height=1).pack(fill=tk.X, pady=2)
 
         self._refresh_btn.configure(state=tk.NORMAL)
-        self._last_updated_var.set(f"Upd: {datetime.now().strftime('%H:%M:%S')}")
         self._reposition_and_resize()
 
     def _add_section(self, parent: tk.Frame, section: UsageSection, email: str, top_pad: int = 2):

@@ -7,7 +7,6 @@ import time
 import tempfile
 import threading
 import queue
-from enum import Enum, auto
 
 from config import CLAUDE_CMD, PTY_TIMEOUT_S, PTY_COLS, PTY_ROWS
 
@@ -24,19 +23,10 @@ _USAGE_HEADER_RE = re.compile(r'Current session|Current week|Extra usage', re.IG
 _BANNER_FALLBACK_S = 8.0
 
 
-class _State(Enum):
-    WAITING_FOR_BANNER = auto()
-    CONFIRMING_TRUST = auto()   # auto-press Enter on the trust dialog
-    SENDING_STATUS = auto()
-    CAPTURING_STATUS = auto()
-    SENDING_USAGE = auto()
-    CAPTURING_USAGE = auto()
-    DONE = auto()
-
-
 def _resolve_claude_path() -> str:
     """Resolve full path to the claude executable."""
-    found = shutil.which(CLAUDE_CMD)
+    import shutil as _shutil
+    found = _shutil.which(CLAUDE_CMD)
     if found:
         return found
 
@@ -79,211 +69,303 @@ def _reader_thread(proc, data_queue: queue.Queue, stop_event: threading.Event):
             time.sleep(0.05)
 
 
-def run_usage() -> tuple[str, str]:
-    """
-    Spawn Claude Code CLI in a PTY, send /status, then /usage,
-    and return both outputs (status, usage).
-    Raises RuntimeError on failure.
-    """
-    try:
-        import winpty
-    except ImportError:
-        raise RuntimeError("pywinpty is not installed. Run: pip install pywinpty")
+class ClaudePtySession:
+    """Persistent PTY session that stays alive across refresh cycles.
 
-    claude_path = _resolve_claude_path()
-    tmpdir = tempfile.mkdtemp(prefix="claude_usage_")
-    env = os.environ.copy()
-    env["TERM"] = "xterm-256color"
+    Focus steal (from CreateProcessW) happens only once at spawn time.
+    Subsequent query_usage() calls reuse the same PTY — no new console window.
+    """
 
-    try:
-        proc = winpty.PtyProcess.spawn(
-            claude_path,
-            dimensions=(PTY_ROWS, PTY_COLS),
-            cwd=tmpdir,
-            env=env,
+    def __init__(self):
+        self._proc = None
+        self._tmpdir: str | None = None
+        self._data_queue: queue.Queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._reader: threading.Thread | None = None
+        self._lock = threading.Lock()
+        self._ready = False
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _spawn(self):
+        """Spawn PTY and wait for banner. Called once, or on recovery."""
+        try:
+            import winpty
+        except ImportError:
+            raise RuntimeError("pywinpty is not installed. Run: pip install pywinpty")
+
+        self._cleanup_proc()
+
+        claude_path = _resolve_claude_path()
+        self._tmpdir = tempfile.mkdtemp(prefix="claude_usage_")
+        env = os.environ.copy()
+        env["TERM"] = "xterm-256color"
+
+        try:
+            self._proc = winpty.PtyProcess.spawn(
+                claude_path,
+                dimensions=(PTY_ROWS, PTY_COLS),
+                cwd=self._tmpdir,
+                env=env,
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to spawn Claude Code ({claude_path}): {e}")
+
+        # Fresh stop event + reader thread
+        self._stop_event = threading.Event()
+        self._drain_queue()
+        self._reader = threading.Thread(
+            target=_reader_thread,
+            args=(self._proc, self._data_queue, self._stop_event),
+            daemon=True,
         )
-    except Exception as e:
-        raise RuntimeError(f"Failed to spawn Claude Code ({claude_path}): {e}")
+        self._reader.start()
 
-    # Start a reader thread so we don't block on proc.read()
-    data_queue = queue.Queue()
-    stop_event = threading.Event()
-    reader = threading.Thread(
-        target=_reader_thread, args=(proc, data_queue, stop_event), daemon=True
-    )
-    reader.start()
+        self._wait_for_banner()
+        self._ready = True
 
-    state = _State.WAITING_FOR_BANNER
-    buffer = ""
-    deadline = time.monotonic() + PTY_TIMEOUT_S
-    first_output_at = None
-    send_cmd_at = None
-    status_buffer = ""
-    usage_buffer = ""
-    last_data_at = time.monotonic()
-    state_start_at = time.monotonic()
+    def _wait_for_banner(self):
+        """Wait for the Claude banner (or trust dialog + banner)."""
+        buffer = ""
+        deadline = time.monotonic() + PTY_TIMEOUT_S
+        first_output_at = None
+        trust_confirmed = False
 
-    try:
-        eof_reached = False
         while time.monotonic() < deadline:
-            # Drain the queue (non-blocking)
-            got_data = False
             while True:
                 try:
-                    chunk = data_queue.get_nowait()
+                    chunk = self._data_queue.get_nowait()
                     if chunk is None:
-                        # EOF
-                        eof_reached = True
-                        break
+                        raise RuntimeError("PTY EOF before banner appeared")
                     buffer += chunk
-                    got_data = True
-                    last_data_at = time.monotonic()
                     if first_output_at is None:
                         first_output_at = time.monotonic()
                 except queue.Empty:
                     break
 
-            if state == _State.WAITING_FOR_BANNER:
-                clean = strip_ansi(buffer)
-                if _TRUST_PROMPT_RE.search(clean):
-                    # Auto-confirm the folder trust dialog
-                    time.sleep(0.3)
-                    proc.write("\r")
-                    state = _State.CONFIRMING_TRUST
-                    state_start_at = time.monotonic()
-                    buffer = ""
-                elif _BANNER_RE.search(clean):
-                    state = _State.SENDING_STATUS
-                    state_start_at = time.monotonic()
-                    send_cmd_at = time.monotonic() + 0.5
-                elif (
-                    first_output_at is not None
-                    and (time.monotonic() - first_output_at) > _BANNER_FALLBACK_S
-                ):
-                    # Fallback: just try sending /status anyway
-                    state = _State.SENDING_STATUS
-                    state_start_at = time.monotonic()
-                    send_cmd_at = time.monotonic() + 0.1
+            clean = strip_ansi(buffer)
 
-            elif state == _State.CONFIRMING_TRUST:
-                clean = strip_ansi(buffer)
-                # Wait for the real prompt to appear after trust confirmation
-                if _BANNER_RE.search(clean):
-                    state = _State.SENDING_STATUS
-                    state_start_at = time.monotonic()
-                    send_cmd_at = time.monotonic() + 1.0
-                elif (
-                    first_output_at is not None
-                    and (time.monotonic() - first_output_at) > _BANNER_FALLBACK_S + 5
-                ):
-                    state = _State.SENDING_STATUS
-                    state_start_at = time.monotonic()
-                    send_cmd_at = time.monotonic() + 0.5
+            if not trust_confirmed and _TRUST_PROMPT_RE.search(clean):
+                time.sleep(0.3)
+                self._proc.write("\r")
+                trust_confirmed = True
+                buffer = ""
+                continue
 
-            elif state == _State.SENDING_STATUS:
-                if time.monotonic() >= send_cmd_at:
-                    proc.write("/status\r")
-                    state = _State.CAPTURING_STATUS
-                    state_start_at = time.monotonic()
-                    buffer = ""
+            if _BANNER_RE.search(clean):
+                time.sleep(0.5)  # let prompt settle
+                self._drain_queue()
+                return
 
-            elif state == _State.CAPTURING_STATUS:
-                if got_data:
-                    status_buffer += buffer
-                    buffer = ""
-                clean = strip_ansi(status_buffer)
-                
-                # Robust transition: if we see an email OR if it's been silent for 2s after some data
-                # OR if it's been 5s since we started capturing status
-                time_in_state = time.monotonic() - state_start_at
-                silence_time = time.monotonic() - last_data_at
-                
-                if (
-                    ("@" in clean or "logged" in clean.lower())
-                    or (silence_time > 0.8 and len(clean.strip()) > 0)
-                    or (time_in_state > 3.0)
-                ):
-                    # User Hint: Status UI must be dismissed with Esc before sending next command
-                    proc.write("\x1b")
-                    time.sleep(0.2)
-                    state = _State.SENDING_USAGE
-                    state_start_at = time.monotonic()
-                    send_cmd_at = time.monotonic() + 0.1
+            if (
+                first_output_at is not None
+                and (time.monotonic() - first_output_at) > _BANNER_FALLBACK_S
+            ):
+                time.sleep(0.1)
+                self._drain_queue()
+                return
 
-            elif state == _State.SENDING_USAGE:
-                if time.monotonic() >= send_cmd_at:
-                    # Resize trick to force full re-render
-                    try:
-                        proc.setwinsize(PTY_ROWS, PTY_COLS - 1)
-                        time.sleep(0.05)
-                        proc.setwinsize(PTY_ROWS, PTY_COLS)
-                    except Exception:
-                        pass
-                    time.sleep(0.1)
-                    proc.write("/usage\r")
-                    state = _State.CAPTURING_USAGE
-                    state_start_at = time.monotonic()
-                    usage_buffer = ""
-                    buffer = ""  # reset to capture fresh
+            time.sleep(0.05)
 
-            elif state == _State.CAPTURING_USAGE:
-                if got_data:
-                    usage_buffer += buffer
-                    buffer = ""
-                clean = strip_ansi(usage_buffer)
-                
-                # Check for usage headers OR a reasonable silence timeout
-                time_in_state = time.monotonic() - state_start_at
-                silence_time = time.monotonic() - last_data_at
-                
-                if _USAGE_HEADER_RE.search(clean):
-                    # We found usage data — wait a bit more for the full output
-                    time.sleep(1.0)
-                    # Drain any remaining data
-                    while True:
-                        try:
-                            chunk = data_queue.get_nowait()
-                            if chunk is None:
-                                break
-                            usage_buffer += chunk
-                        except queue.Empty:
-                            break
-                    state = _State.DONE
-                    break
-                elif silence_time > 5.0 and len(clean.strip()) > 10:
-                    # Fallback if we have some data but headers never matched
-                    state = _State.DONE
-                    break
+        raise RuntimeError("Timeout waiting for Claude banner")
 
-            if eof_reached:
+    def _drain_queue(self):
+        """Discard all pending data in the queue."""
+        while True:
+            try:
+                self._data_queue.get_nowait()
+            except queue.Empty:
                 break
-            
+
+    def _drain_to_str(self) -> str:
+        """Drain all pending queue data and return as a string."""
+        result = ""
+        while True:
+            try:
+                chunk = self._data_queue.get_nowait()
+                if chunk is None:
+                    break
+                result += chunk
+            except queue.Empty:
+                break
+        return result
+
+    def _ensure_alive(self):
+        """Re-spawn if the PTY process has died."""
+        if self._proc is None or not self._ready:
+            self._spawn()
+            return
+        try:
+            if not self._proc.isalive():
+                self._cleanup_proc()
+                self._spawn()
+        except Exception:
+            self._cleanup_proc()
+            self._spawn()
+
+    def _cleanup_proc(self):
+        """Terminate the current process and clean up resources."""
+        self._ready = False
+        self._stop_event.set()
+        if self._proc is not None:
+            try:
+                self._proc.write("/exit\r")
+                time.sleep(0.2)
+            except Exception:
+                pass
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+            self._proc = None
+        if self._tmpdir:
+            try:
+                shutil.rmtree(self._tmpdir, ignore_errors=True)
+            except Exception:
+                pass
+            self._tmpdir = None
+
+    def _capture_status(self) -> str:
+        """Read /status output until email seen, silence, or timeout."""
+        buf = ""
+        deadline = time.monotonic() + PTY_TIMEOUT_S
+        state_start = time.monotonic()
+        last_data_at = time.monotonic()
+
+        while time.monotonic() < deadline:
+            while True:
+                try:
+                    chunk = self._data_queue.get_nowait()
+                    if chunk is None:
+                        return buf
+                    buf += chunk
+                    last_data_at = time.monotonic()
+                except queue.Empty:
+                    break
+
+            clean = strip_ansi(buf)
+            silence = time.monotonic() - last_data_at
+            elapsed = time.monotonic() - state_start
+
+            if (
+                ("@" in clean or "logged" in clean.lower())
+                or (silence > 0.8 and len(clean.strip()) > 0)
+                or elapsed > 3.0
+            ):
+                return buf
+
+            time.sleep(0.05)
+
+        return buf
+
+    def _capture_usage(self) -> str:
+        """Read /usage output until header found or timeout."""
+        buf = ""
+        deadline = time.monotonic() + PTY_TIMEOUT_S
+        state_start = time.monotonic()
+        last_data_at = time.monotonic()
+
+        while time.monotonic() < deadline:
+            while True:
+                try:
+                    chunk = self._data_queue.get_nowait()
+                    if chunk is None:
+                        return buf
+                    buf += chunk
+                    last_data_at = time.monotonic()
+                except queue.Empty:
+                    break
+
+            clean = strip_ansi(buf)
+            silence = time.monotonic() - last_data_at
+
+            if _USAGE_HEADER_RE.search(clean):
+                # Wait a bit more for the full output, then drain
+                time.sleep(1.0)
+                buf += self._drain_to_str()
+                return buf
+
+            if silence > 5.0 and len(clean.strip()) > 10:
+                return buf
+
+            time.sleep(0.05)
+
+        return buf
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def query_usage(self) -> tuple[str, str]:
+        """Send /status + /usage over the persistent PTY.
+
+        Returns (status_text, usage_text) with ANSI stripped.
+        Serializes concurrent calls via self._lock.
+        """
+        with self._lock:
+            self._ensure_alive()
+            self._drain_queue()
+
+            # 1. /status
+            self._proc.write("/status\r")
+            status_raw = self._capture_status()
+            self._proc.write("\x1b")   # dismiss status overlay
+            time.sleep(0.2)
+            self._drain_queue()
+
+            # 2. Resize trick + /usage
+            try:
+                self._proc.setwinsize(PTY_ROWS, PTY_COLS - 1)
+                time.sleep(0.05)
+                self._proc.setwinsize(PTY_ROWS, PTY_COLS)
+            except Exception:
+                pass
             time.sleep(0.1)
 
-        if state == _State.DONE:
-            return strip_ansi(status_buffer), strip_ansi(usage_buffer)
-
-        # Error cases
-        all_text = strip_ansi(buffer + status_buffer + usage_buffer)
-        preview = all_text[:300].strip() or "(no output)"
-        raise RuntimeError(f"Failed to capture data in state {state}.\nReceived: {preview}")
-
-    finally:
-        stop_event.set()
-        try:
-            proc.write("/exit\r")
+            self._proc.write("/usage\r")
+            usage_raw = self._capture_usage()
+            self._proc.write("\x1b")   # dismiss usage overlay, return to prompt
             time.sleep(0.2)
-        except Exception:
-            pass
-        try:
-            proc.terminate()
-        except Exception:
-            pass
-        try:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-        except Exception:
-            pass
+            self._drain_queue()
 
+            return strip_ansi(status_raw), strip_ansi(usage_raw)
+
+    def close(self):
+        """Clean shutdown — send /exit and terminate the PTY."""
+        with self._lock:
+            self._cleanup_proc()
+
+
+# ------------------------------------------------------------------
+# Module-level singleton
+# ------------------------------------------------------------------
+
+_session: ClaudePtySession | None = None
+_session_lock = threading.Lock()
+
+
+def _get_session() -> ClaudePtySession:
+    global _session
+    with _session_lock:
+        if _session is None:
+            _session = ClaudePtySession()
+        return _session
+
+
+def close_session():
+    """Terminate the persistent PTY session. Call on app quit."""
+    global _session
+    with _session_lock:
+        if _session is not None:
+            _session.close()
+            _session = None
+
+
+# ------------------------------------------------------------------
+# Public threaded runner — same API as before, transparent to main.py
+# ------------------------------------------------------------------
 
 def run_usage_threaded(callback, error_callback=None):
     """
@@ -292,7 +374,8 @@ def run_usage_threaded(callback, error_callback=None):
     """
     def _worker():
         try:
-            status, usage = run_usage()
+            session = _get_session()
+            status, usage = session.query_usage()
             callback(status, usage)
         except Exception as e:
             if error_callback:

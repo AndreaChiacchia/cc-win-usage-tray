@@ -105,7 +105,8 @@ class ClaudeUsageTray:
         self._refreshing = True
         self._was_visible_before_refresh = self.popup.visible
         self.popup._refreshing = True
-        self.root.after(0, self.popup.show_loading)
+        if self.popup.visible:
+            self.root.after(0, self.popup.show_loading)
         if self._tray_icon:
             self._tray_icon.icon = generate_loading_icon()
             self._tray_icon.title = "Claude Usage — Loading..."
@@ -125,6 +126,8 @@ class ClaudeUsageTray:
         try:
             email = parse_email(status_text) or "unknown@claude.ai"
             self._active_email = email
+            # Re-schedule with the correct per-account interval (first schedule used "" email)
+            self.root.after(0, self._on_refresh_interval_changed)
             usage_data = parse_usage(usage_text)
 
             # Load OLD accounts BEFORE saving new data
@@ -226,6 +229,8 @@ class ClaudeUsageTray:
     # ------------------------------------------------------------------
 
     def _quit(self, icon=None, item=None):
+        from claude_runner import close_session
+        close_session()
         if self._tray_icon:
             self._tray_icon.stop()
         self.root.after(0, self.root.quit)

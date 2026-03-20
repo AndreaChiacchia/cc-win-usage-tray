@@ -31,10 +31,9 @@ jobs:
         shell: bash
         run: |
           git fetch --tags --force
-          MSG=$(git tag -l "$GITHUB_REF_NAME" --format='%(contents)')
-          echo "body<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$MSG" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "body<<ENDOFBODY" >> "$GITHUB_OUTPUT"
+          git tag -l "$GITHUB_REF_NAME" --format='%(contents)' >> "$GITHUB_OUTPUT"
+          echo "ENDOFBODY" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release and upload asset
         uses: softprops/action-gh-release@v2

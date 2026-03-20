@@ -26,9 +26,19 @@ jobs:
       - name: Build executable
         run: pyinstaller ClaudeUsageTray.spec --distpath dist --workpath build --noconfirm
 
+      - name: Get tag annotation
+        id: tag_msg
+        shell: bash
+        run: |
+          MSG=$(git tag -l "$GITHUB_REF_NAME" --format='%(contents)')
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$MSG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release and upload asset
         uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.tag_msg.outputs.body }}
           draft: false
           prerelease: false
           files: dist/ClaudeUsageTray.exe

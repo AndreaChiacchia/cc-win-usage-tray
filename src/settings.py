@@ -2,7 +2,7 @@
 import json
 import os
 
-SETTINGS_FILE = "user_settings.json"
+from paths import SETTINGS_FILE
 _DEFAULT_REFRESH_MINUTES = 5
 _DEFAULT_THRESHOLD = 10
 

@@ -3,7 +3,7 @@ import os
 from dataclasses import asdict
 from usage_parser import AccountUsage, UsageData, UsageSection
 
-STORAGE_FILE = "accounts_usage.json"
+from paths import STORAGE_FILE
 
 def _account_usage_to_dict(account: AccountUsage) -> dict:
     return asdict(account)

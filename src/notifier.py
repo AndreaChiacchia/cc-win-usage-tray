@@ -1,18 +1,17 @@
 """Windows toast notifications for usage threshold crossings."""
+import datetime
 import os
 import sys
 from winotify import Notification, audio
 from usage_parser import AccountUsage
 import settings as settings_mod
+import paths
 
 
 def _log_debug(msg: str):
-    """Write a debug message to a log file next to the executable (visible in --console=False builds)."""
+    """Write a debug message to a log file in the app data directory."""
     try:
-        base = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else __file__)
-        log_path = os.path.join(base, "notifier_debug.log")
-        with open(log_path, "a", encoding="utf-8") as f:
-            import datetime
+        with open(paths.NOTIFIER_LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
     except Exception:
         pass

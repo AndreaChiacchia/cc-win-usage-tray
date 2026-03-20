@@ -10,6 +10,7 @@ from datetime import datetime
 
 from claude_runner import run_usage_threaded
 from usage_parser import parse_usage, parse_email, UsageData, AccountUsage
+import paths
 import storage
 import settings as settings_mod
 from startup import is_startup_enabled, set_startup_enabled
@@ -119,7 +120,7 @@ class ClaudeUsageTray:
     def _on_usage_success(self, status_text: str, usage_text: str):
         # --- DEBUG: dump raw text to file ---
         try:
-            with open("usage_output_debug.txt", "w", encoding="utf-8") as f:
+            with open(paths.DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
                 f.write(f"=== STATUS ===\n{repr(status_text)}\n\n=== USAGE ===\n{repr(usage_text)}")
         except Exception: pass
 

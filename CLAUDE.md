@@ -20,7 +20,7 @@ Follow SemVer:
 **Merge procedure (staging → main):**
 1. Determine the SemVer level from commits since the last bump (higher level wins if mixed).
 2. Bump `src/version.py` on `staging` and commit it there.
-3. Check if the README needs updating to reflect the changes (new features, changed behavior, updated setup steps, etc.) and update/commit on `staging` if so.
+3. Update the version badge in `README.md` to match the new version, and check if any other README content needs updating (new features, changed behavior, etc.). Commit on `staging`.
 4. Push `staging` to remote.
 5. Switch to `main`, merge `staging`.
 6. Push `main`.

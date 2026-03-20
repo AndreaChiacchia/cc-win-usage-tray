@@ -20,10 +20,11 @@ Follow SemVer:
 **Merge procedure (staging → main):**
 1. Determine the SemVer level from commits since the last bump (higher level wins if mixed).
 2. Bump `src/version.py` on `staging` and commit it there.
-3. Push `staging` to remote.
-4. Switch to `main`, merge `staging`.
-5. Push `main`.
-6. Compile a changelog from commits since the last tag, grouped into sections (Features, Fixes, Other). Tag on `main` with an annotated tag containing the changelog: `git tag -a v{version} -m "$(changelog)"` and push the tag.
+3. Check if the README needs updating to reflect the changes (new features, changed behavior, updated setup steps, etc.) and update/commit on `staging` if so.
+4. Push `staging` to remote.
+5. Switch to `main`, merge `staging`.
+6. Push `main`.
+7. Compile a changelog from commits since the last tag. Each entry is one line prefixed with its type (`feat:`, `fix:`, etc.) followed by a concise summary and the short commit hash. No section grouping. Tag on `main` with an annotated tag containing the changelog: `git tag -a v{version} -m "$(changelog)"` and push the tag.
 
 ## Setup & Running
 

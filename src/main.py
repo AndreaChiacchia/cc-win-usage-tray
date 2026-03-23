@@ -45,6 +45,13 @@ class ClaudeUsageTray:
         # --- Preload saved accounts so bars are immediately visible ---
         saved = storage.load_all_accounts()
         if saved:
+            # Reconcile stale is_active flags from storage
+            active_count = sum(1 for a in saved.values() if a.is_active)
+            if active_count > 1:
+                latest = max(saved.keys(), key=lambda e: saved[e].last_updated)
+                for email_key, acc in saved.items():
+                    acc.is_active = (email_key == latest)
+                storage.save_all_accounts(saved)
             self.popup.show_usage(saved)
 
         # --- Initial data load ---
@@ -134,7 +141,21 @@ class ClaudeUsageTray:
         except Exception: pass
 
         try:
-            email = parse_email(status_text) or "unknown@claude.ai"
+            email = parse_email(status_text)
+            if not email:
+                self._on_usage_error("Could not identify account from /status output")
+                return
+
+            # Account changed — usage data is from the old session, discard it
+            prev = getattr(self, '_active_email', None)
+            if prev and prev != email:
+                from claude_runner import force_restart_session
+                force_restart_session()
+                self._active_email = email
+                self._refreshing = False
+                self.root.after(100, self._trigger_refresh)
+                return
+
             self._active_email = email
             # Re-schedule with the correct per-account interval (first schedule used "" email)
             self.root.after(0, self._on_refresh_interval_changed)
@@ -149,12 +170,13 @@ class ClaudeUsageTray:
                 last_updated=datetime.now().isoformat(),
                 is_active=True
             )
-            storage.save_account(account)
 
-            # Load all accounts and reconcile active state
+            # Single atomic update: load, update, reconcile, persist
             all_accounts = storage.load_all_accounts()
+            all_accounts[email] = account
             for email_key, acc in all_accounts.items():
                 acc.is_active = (email_key == email)
+            storage.save_all_accounts(all_accounts)
 
             # Check thresholds and notify
             from notifier import check_and_notify

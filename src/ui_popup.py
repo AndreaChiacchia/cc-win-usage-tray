@@ -61,6 +61,7 @@ class UsagePopup:
         self._shimmer_x = 0
         self._anim_after_ids: list = []
         self._anim_generation = 0
+        self._last_active_email: str | None = None
 
         t = theme_mod.current()
 
@@ -237,6 +238,9 @@ class UsagePopup:
         """Return True if we can update existing widgets without rebuilding."""
         if not self._bar_widgets:
             return False
+        current_active = next((e for e, a in accounts.items() if a.is_active), None)
+        if current_active != self._last_active_email:
+            return False
         for acc in accounts.values():
             if acc.usage.error:
                 return False
@@ -299,14 +303,15 @@ class UsagePopup:
 
         # Sort accounts to put active one first
         sorted_emails = sorted(accounts.keys(), key=lambda e: (not accounts[e].is_active, e))
+        self._last_active_email = next((e for e in sorted_emails if accounts[e].is_active), None)
 
         for idx, email in enumerate(sorted_emails):
             acc = accounts[email]
 
             # Account Header
             header_text = f"> {email}"
-            if not acc.is_active:
-                header_text += " ⚠️"
+            if acc.is_active and len(accounts) > 1:
+                header_text += " ✦"
 
             tk.Label(
                 self._content_frame,
@@ -1064,11 +1069,27 @@ class UsagePopup:
         self._cancel_relative_timer()
         self._relative_timer_id = self.root.after(60_000, self._tick_relative)
 
+    def _refresh_sync_labels(self):
+        """Update sync label text in-place without rebuilding widgets."""
+        if not self._last_accounts:
+            return
+        for email, acc in self._last_accounts.items():
+            lbl = self._sync_labels.get(email)
+            if lbl and lbl.winfo_exists():
+                if settings_mod.get_relative_time_enabled(email):
+                    lbl.configure(text=f"  {time_utils.format_last_sync_relative(acc.last_updated)}")
+                else:
+                    try:
+                        dt = datetime.fromisoformat(acc.last_updated)
+                        lbl.configure(text=f"  Last sync: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                    except Exception:
+                        lbl.configure(text=f"  Last sync: {acc.last_updated}")
+
     def _tick_relative(self):
         if not self._visible or self._last_accounts is None:
             return
         if any(settings_mod.get_relative_time_enabled(em) for em in self._last_accounts):
-            self._rebuild_content()
+            self._refresh_sync_labels()
         self._start_relative_timer()
 
     def _cancel_relative_timer(self):
@@ -1140,6 +1161,7 @@ class UsagePopup:
         else:
             self.win.attributes("-topmost", True)
         self._visible = True
+        self._refresh_sync_labels()
         self._start_relative_timer()
         # If a refresh is in progress and bars exist, start shimmer
         if self._refreshing and self._bar_widgets and not self._shimmer_active:

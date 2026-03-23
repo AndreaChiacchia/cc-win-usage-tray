@@ -2,7 +2,7 @@
 
 A Windows system tray application that monitors [Claude Code](https://claude.ai/code) usage in real time — session, weekly, and extra tokens — with a dark-themed popup, color-coded progress bars, and Windows toast notifications.
 
-![version](https://img.shields.io/badge/version-v1.4.0-blue)
+![version](https://img.shields.io/badge/version-v1.5.0-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
@@ -15,7 +15,9 @@ A Windows system tray application that monitors [Claude Code](https://claude.ai/
 
 - **System tray icon** — dynamic states (normal / loading / error), right-click menu, tooltip showing live usage percentages
 - **Dark-themed popup** — terminal aesthetic, Consolas font, positioned just above the taskbar, auto-dismisses on focus loss, includes a close button
-- **Color-coded progress bars** — green (< 50 %), yellow (50–79 %), red (≥ 80 %) with smooth animated fills and shimmer refresh effect
+- **Color-coded progress bars** — green (< 50 %), yellow (50–79 %), red (≥ 80 %) with smooth animated fills, shimmer refresh effect, and inline animated spent amount
+- **Draggable popup** — drag the title bar to reposition anywhere (including across monitors); position persists across restarts; falls back to bottom-right corner
+- **Always-on-top toggle** — tray menu checkbox (default: on) to control whether the popup stays above other windows; persists across restarts
 - **Theming system** — built-in themes selectable from the tray menu
 - **Multi-account support** — tracks all accounts simultaneously; the active account is shown first, historical data is preserved across refreshes
 - **Relative / cooldown time display** — per-account toggle to switch between absolute and relative time remaining

@@ -1,5 +1,6 @@
 """Tkinter popup window with usage progress bars."""
 
+import re
 import tkinter as tk
 import time
 from datetime import datetime
@@ -63,12 +64,19 @@ class UsagePopup:
         self._anim_generation = 0
         self._last_active_email: str | None = None
 
+        # Drag state
+        self._drag_data = {"x": 0, "y": 0}
+        self._custom_position: tuple[int, int] | None = settings_mod.get_popup_position()
+
+        # Always-on-top state (default True preserves existing behavior)
+        self._always_on_top: bool = settings_mod.get_always_on_top()
+
         t = theme_mod.current()
 
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.configure(bg=t.bg)
-        self.win.attributes("-topmost", True)
+        self.win.attributes("-topmost", self._always_on_top)
         self.win.withdraw()
 
         # Styled border via outer frame
@@ -88,8 +96,16 @@ class UsagePopup:
             bg=t.bg, fg=t.fg,
             font=t.font_bold,
             anchor="w",
+            cursor="fleur",
         )
         self._title_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Drag bindings on title bar and label
+        for widget in (self._top, self._title_label):
+            widget.bind("<ButtonPress-1>", self._on_drag_start)
+            widget.bind("<B1-Motion>", self._on_drag_motion)
+            widget.bind("<ButtonRelease-1>", self._on_drag_end)
+        self._top.configure(cursor="fleur")
 
         self._close_btn = tk.Button(
             self._top,
@@ -284,14 +300,42 @@ class UsagePopup:
                         display_reset = section.reset_info
                     reset_lbl.configure(text=display_reset)
 
-                if old_pct != new_pct:
-                    self._animate_bar(key, old_pct, new_pct, new_color)
+                # Extract old/new spent for animation
+                old_spent_info = refs.get("spent_info")
+                new_spent_info = section.spent_info
+                old_spent = new_spent = spent_cap = None
+                if old_spent_info and new_spent_info:
+                    m_old = re.search(r'\$([\d.]+)\s*/\s*\$([\d.]+)', old_spent_info)
+                    m_new = re.search(r'\$([\d.]+)\s*/\s*\$([\d.]+)', new_spent_info)
+                    if m_old and m_new:
+                        old_spent = float(m_old.group(1))
+                        new_spent = float(m_new.group(1))
+                        spent_cap = float(m_new.group(2))
+                refs["spent_info"] = new_spent_info
+
+                pct_changed = old_pct != new_pct
+                spent_changed = (old_spent is not None and old_spent != new_spent)
+
+                if pct_changed or spent_changed:
+                    self._animate_bar(
+                        key, old_pct, new_pct, new_color,
+                        old_spent, new_spent, spent_cap,
+                    )
                 else:
                     refs["color"] = new_color
                     if refs["pct_label"].winfo_exists():
                         refs["pct_label"].configure(
                             text=f"{section.percentage:3d}%", fg=new_color
                         )
+                    # Snap label text in case spent_info was added/removed
+                    section_lbl = refs.get("section_label")
+                    if section_lbl and section_lbl.winfo_exists():
+                        label_base = refs.get("label_text", section.label)
+                        lbl_text = (
+                            f"{label_base} · {new_spent_info}"
+                            if new_spent_info else label_base
+                        )
+                        section_lbl.configure(text=lbl_text)
 
         self._refresh_btn.configure(state=tk.NORMAL)
         self._reposition_and_resize()
@@ -309,17 +353,23 @@ class UsagePopup:
             acc = accounts[email]
 
             # Account Header
-            header_text = f"> {email}"
-            if acc.is_active and len(accounts) > 1:
-                header_text += " ✦"
-
+            header_row = tk.Frame(self._content_frame, bg=t.bg)
+            header_row.pack(fill=tk.X, pady=(4, 0))
             tk.Label(
-                self._content_frame,
-                text=header_text,
-                bg=t.bg, fg=t.fg if acc.is_active else t.fg_dim,
+                header_row,
+                text=f"> {email}",
+                bg=t.bg, fg=t.fg_dim,
                 font=t.font_bold,
                 anchor="w",
-            ).pack(fill=tk.X, pady=(4, 0))
+            ).pack(side=tk.LEFT)
+            if acc.is_active and len(accounts) > 1:
+                tk.Label(
+                    header_row,
+                    text=" ✦",
+                    bg=t.bg, fg=t.fg,
+                    font=t.font_bold,
+                    anchor="w",
+                ).pack(side=tk.LEFT)
 
             # Timestamp row with cog for account settings
             use_relative = settings_mod.get_relative_time_enabled(email)
@@ -470,11 +520,16 @@ class UsagePopup:
                 pass
         self._anim_after_ids.clear()
 
-    def _animate_bar(self, key: tuple, old_pct: float, new_pct: float, new_color: str):
+    def _animate_bar(
+        self, key: tuple, old_pct: float, new_pct: float, new_color: str,
+        old_spent: float | None = None, new_spent: float | None = None,
+        spent_cap: float | None = None,
+    ):
         """Animate bar fill from old_pct to new_pct over ANIM_BAR_DURATION_MS."""
         start = time.monotonic()
         duration = ANIM_BAR_DURATION_MS / 1000.0
         gen = self._anim_generation
+        animate_spent = (old_spent is not None and new_spent is not None and spent_cap is not None)
 
         def _tick():
             if gen != self._anim_generation:
@@ -494,6 +549,18 @@ class UsagePopup:
             if refs["pct_label"].winfo_exists():
                 display = round(pct) if t_val < 1.0 else int(new_pct)
                 refs["pct_label"].configure(text=f"{display:3d}%", fg=new_color)
+
+            if animate_spent:
+                section_lbl = refs.get("section_label")
+                if section_lbl and section_lbl.winfo_exists():
+                    interp_spent = old_spent + (new_spent - old_spent) * progress
+                    if t_val >= 1.0:
+                        interp_spent = new_spent
+                    refs["current_spent"] = interp_spent
+                    label_base = refs.get("label_text", key[1])
+                    section_lbl.configure(
+                        text=f"{label_base} · ${interp_spent:.2f} / ${spent_cap:.2f} spent"
+                    )
 
             if t_val < 1.0:
                 aid = self.root.after(ANIM_FRAME_MS, _tick)
@@ -518,14 +585,19 @@ class UsagePopup:
         frame = tk.Frame(parent, bg=t.bg, pady=0)
         frame.pack(fill=tk.X, pady=(top_pad, 0))
 
-        # Section label
-        tk.Label(
+        # Section label (includes spent_info for Extra usage)
+        label_base = section.label
+        label_text = label_base
+        if section.spent_info:
+            label_text += f" · {section.spent_info}"
+        section_lbl = tk.Label(
             frame,
-            text=section.label,
+            text=label_text,
             bg=t.bg, fg=t.fg,
             font=t.font_bold,
             anchor="w",
-        ).pack(fill=tk.X)
+        )
+        section_lbl.pack(fill=tk.X)
 
         # Canvas progress bar + percentage
         bar_row = tk.Frame(frame, bg=t.bg)
@@ -585,16 +657,6 @@ class UsagePopup:
             cog.pack(side=tk.LEFT)
             cog.bind("<Button-1>", lambda e, em=_em, sl=_sl: self._open_threshold_settings(em, sl))
 
-        # Spent info (Extra usage only)
-        if section.spent_info:
-            tk.Label(
-                frame,
-                text=section.spent_info,
-                bg=t.bg, fg=t.fg_dim,
-                font=t.font,
-                anchor="w",
-            ).pack(fill=tk.X)
-
         # Separator line (omitted after the last section of the last account)
         if not is_last:
             sep_frame = tk.Frame(frame, bg=t.bg, height=1)
@@ -608,12 +670,23 @@ class UsagePopup:
                 anchor="n",
             ).pack(fill=tk.X)
 
+        # Parse initial spent value for animation tracking
+        current_spent = None
+        if section.spent_info:
+            m = re.search(r'\$([\d.]+)\s*/\s*\$([\d.]+)', section.spent_info)
+            if m:
+                current_spent = float(m.group(1))
+
         return {
             "canvas": canvas,
             "pct_label": pct_lbl,
             "current_pct": pct,
             "color": color,
             "reset_label": reset_lbl,
+            "section_label": section_lbl,
+            "label_text": label_base,
+            "spent_info": section.spent_info,
+            "current_spent": current_spent,
         }
 
     # ------------------------------------------------------------------
@@ -632,7 +705,7 @@ class UsagePopup:
         win = tk.Toplevel(self.root)
         win.overrideredirect(True)
         win.configure(bg=t.bg)
-        win.attributes("-topmost", True)
+        win.attributes("-topmost", self._always_on_top)
         self._settings_windows[key] = win
 
         def _close():
@@ -1100,7 +1173,7 @@ class UsagePopup:
     # ------------------------------------------------------------------
 
     def _reposition_and_resize(self):
-        """Position popup in bottom-right corner, above taskbar."""
+        """Position popup above taskbar (or at saved custom position)."""
         self.win.update_idletasks()
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
@@ -1111,8 +1184,13 @@ class UsagePopup:
             self.win.update_idletasks()
 
         req_h = self.win.winfo_reqheight()
-        x = screen_w - POPUP_WIDTH - 8
-        y = screen_h - req_h - TASKBAR_OFFSET
+
+        if self._custom_position:
+            x, y = self._custom_position
+        else:
+            x = screen_w - POPUP_WIDTH - 8
+            y = screen_h - req_h - TASKBAR_OFFSET
+
         self.win.geometry(f"{POPUP_WIDTH}x{req_h}+{x}+{y}")
 
     def toggle(self):
@@ -1159,7 +1237,7 @@ class UsagePopup:
             self.win.focus_force()
             self._start_focus_poll()
         else:
-            self.win.attributes("-topmost", True)
+            self.win.attributes("-topmost", self._always_on_top)
         self._visible = True
         self._refresh_sync_labels()
         self._start_relative_timer()
@@ -1193,3 +1271,32 @@ class UsagePopup:
     @property
     def visible(self) -> bool:
         return self._visible
+
+    # ------------------------------------------------------------------
+    # Drag support
+    # ------------------------------------------------------------------
+
+    def _on_drag_start(self, event):
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+
+    def _on_drag_motion(self, event):
+        x = self.win.winfo_x() + (event.x - self._drag_data["x"])
+        y = self.win.winfo_y() + (event.y - self._drag_data["y"])
+        self.win.geometry(f"+{x}+{y}")
+        self._custom_position = (x, y)
+
+    def _on_drag_end(self, event):
+        if self._custom_position:
+            settings_mod.set_popup_position(*self._custom_position)
+
+    # ------------------------------------------------------------------
+    # Always-on-top
+    # ------------------------------------------------------------------
+
+    def set_always_on_top(self, enabled: bool):
+        self._always_on_top = enabled
+        self.win.attributes("-topmost", enabled)
+        for sw in self._settings_windows.values():
+            if sw.winfo_exists():
+                sw.attributes("-topmost", enabled)

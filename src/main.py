@@ -72,6 +72,8 @@ class ClaudeUsageTray:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Start on Windows startup", self._toggle_startup,
                              checked=lambda item: is_startup_enabled()),
+            pystray.MenuItem("Always on top", self._toggle_always_on_top,
+                             checked=lambda item: settings_mod.get_always_on_top()),
             pystray.MenuItem("Themes", self._open_themes_menu),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
@@ -236,6 +238,11 @@ class ClaudeUsageTray:
 
     def _toggle_startup(self, icon=None, item=None):
         set_startup_enabled(not is_startup_enabled())
+
+    def _toggle_always_on_top(self, icon=None, item=None):
+        new_val = not settings_mod.get_always_on_top()
+        settings_mod.set_always_on_top(new_val)
+        self.root.after(0, lambda: self.popup.set_always_on_top(new_val))
 
     def _show_usage_menu(self, icon=None, item=None):
         self.root.after(0, self._show_popup)

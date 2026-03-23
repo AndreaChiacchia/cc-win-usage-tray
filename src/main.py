@@ -42,6 +42,11 @@ class ClaudeUsageTray:
         # --- Auto-refresh ---
         self._schedule_auto_refresh()
 
+        # --- Preload saved accounts so bars are immediately visible ---
+        saved = storage.load_all_accounts()
+        if saved:
+            self.popup.show_usage(saved)
+
         # --- Initial data load ---
         self.root.after(500, self._trigger_refresh)
 
@@ -183,10 +188,10 @@ class ClaudeUsageTray:
 
     def _apply_data(self, accounts: dict[str, AccountUsage]):
         self.popup.show_usage(accounts)
-        self._update_tray_icon(accounts)
-        if self._was_visible_before_refresh and self.popup.visible:
-            self.popup.show(steal_focus=False)
         self.popup.finish_refresh()
+        self._update_tray_icon(accounts)
+        if self._was_visible_before_refresh and not self.popup.visible:
+            self.popup.show(steal_focus=False)
 
     def _schedule_auto_refresh(self):
         interval_ms = settings_mod.get_refresh_interval_minutes(self._active_email) * 60_000
@@ -217,12 +222,17 @@ class ClaudeUsageTray:
         self.root.after(0, self._trigger_refresh)
 
     def _show_popup(self):
-        if not self.popup.visible:
-            # Only trigger refresh if we have no accounts at all (initial state)
-            accounts = storage.load_all_accounts()
-            if not accounts and not self._refreshing:
-                self._trigger_refresh()
-            self.popup.show()
+        if self.popup.visible:
+            self.popup.win.deiconify()
+            self.popup.win.lift()
+            self.popup.win.focus_force()
+            self.popup._start_focus_poll()
+            return
+        # Only trigger refresh if we have no accounts at all (initial state)
+        accounts = storage.load_all_accounts()
+        if not accounts and not self._refreshing:
+            self._trigger_refresh()
+        self.popup.show()
 
     def _toggle_popup(self):
         if self._current_data is None and not self._refreshing:

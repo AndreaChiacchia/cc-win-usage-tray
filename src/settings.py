@@ -84,3 +84,30 @@ def set_theme_name(name: str):
     s = load_settings()
     s.setdefault("_global", {})["theme"] = name
     save_settings(s)
+
+
+def get_popup_position() -> tuple[int, int] | None:
+    s = load_settings()
+    pos = s.get("_global", {}).get("popup_position")
+    if pos and isinstance(pos, list) and len(pos) == 2:
+        return (int(pos[0]), int(pos[1]))
+    return None
+
+
+def set_popup_position(x: int, y: int):
+    s = load_settings()
+    g = s.setdefault("_global", {})
+    g["popup_position"] = [x, y]
+    save_settings(s)
+
+
+def get_always_on_top() -> bool:
+    s = load_settings()
+    return s.get("_global", {}).get("always_on_top", True)
+
+
+def set_always_on_top(enabled: bool):
+    s = load_settings()
+    g = s.setdefault("_global", {})
+    g["always_on_top"] = enabled
+    save_settings(s)

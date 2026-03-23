@@ -64,12 +64,19 @@ class UsagePopup:
         self._anim_generation = 0
         self._last_active_email: str | None = None
 
+        # Drag state
+        self._drag_data = {"x": 0, "y": 0}
+        self._custom_position: tuple[int, int] | None = settings_mod.get_popup_position()
+
+        # Always-on-top state (default True preserves existing behavior)
+        self._always_on_top: bool = settings_mod.get_always_on_top()
+
         t = theme_mod.current()
 
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.configure(bg=t.bg)
-        self.win.attributes("-topmost", True)
+        self.win.attributes("-topmost", self._always_on_top)
         self.win.withdraw()
 
         # Styled border via outer frame
@@ -89,8 +96,16 @@ class UsagePopup:
             bg=t.bg, fg=t.fg,
             font=t.font_bold,
             anchor="w",
+            cursor="fleur",
         )
         self._title_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Drag bindings on title bar and label
+        for widget in (self._top, self._title_label):
+            widget.bind("<ButtonPress-1>", self._on_drag_start)
+            widget.bind("<B1-Motion>", self._on_drag_motion)
+            widget.bind("<ButtonRelease-1>", self._on_drag_end)
+        self._top.configure(cursor="fleur")
 
         self._close_btn = tk.Button(
             self._top,
@@ -690,7 +705,7 @@ class UsagePopup:
         win = tk.Toplevel(self.root)
         win.overrideredirect(True)
         win.configure(bg=t.bg)
-        win.attributes("-topmost", True)
+        win.attributes("-topmost", self._always_on_top)
         self._settings_windows[key] = win
 
         def _close():
@@ -1158,7 +1173,7 @@ class UsagePopup:
     # ------------------------------------------------------------------
 
     def _reposition_and_resize(self):
-        """Position popup in bottom-right corner, above taskbar."""
+        """Position popup above taskbar (or at saved custom position)."""
         self.win.update_idletasks()
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
@@ -1169,8 +1184,13 @@ class UsagePopup:
             self.win.update_idletasks()
 
         req_h = self.win.winfo_reqheight()
-        x = screen_w - POPUP_WIDTH - 8
-        y = screen_h - req_h - TASKBAR_OFFSET
+
+        if self._custom_position:
+            x, y = self._custom_position
+        else:
+            x = screen_w - POPUP_WIDTH - 8
+            y = screen_h - req_h - TASKBAR_OFFSET
+
         self.win.geometry(f"{POPUP_WIDTH}x{req_h}+{x}+{y}")
 
     def toggle(self):
@@ -1217,7 +1237,7 @@ class UsagePopup:
             self.win.focus_force()
             self._start_focus_poll()
         else:
-            self.win.attributes("-topmost", True)
+            self.win.attributes("-topmost", self._always_on_top)
         self._visible = True
         self._refresh_sync_labels()
         self._start_relative_timer()
@@ -1251,3 +1271,32 @@ class UsagePopup:
     @property
     def visible(self) -> bool:
         return self._visible
+
+    # ------------------------------------------------------------------
+    # Drag support
+    # ------------------------------------------------------------------
+
+    def _on_drag_start(self, event):
+        self._drag_data["x"] = event.x
+        self._drag_data["y"] = event.y
+
+    def _on_drag_motion(self, event):
+        x = self.win.winfo_x() + (event.x - self._drag_data["x"])
+        y = self.win.winfo_y() + (event.y - self._drag_data["y"])
+        self.win.geometry(f"+{x}+{y}")
+        self._custom_position = (x, y)
+
+    def _on_drag_end(self, event):
+        if self._custom_position:
+            settings_mod.set_popup_position(*self._custom_position)
+
+    # ------------------------------------------------------------------
+    # Always-on-top
+    # ------------------------------------------------------------------
+
+    def set_always_on_top(self, enabled: bool):
+        self._always_on_top = enabled
+        self.win.attributes("-topmost", enabled)
+        for sw in self._settings_windows.values():
+            if sw.winfo_exists():
+                sw.attributes("-topmost", enabled)

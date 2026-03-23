@@ -191,7 +191,7 @@ class UsagePopup:
         # Sort accounts to put active one first
         sorted_emails = sorted(accounts.keys(), key=lambda e: (not accounts[e].is_active, e))
 
-        for email in sorted_emails:
+        for idx, email in enumerate(sorted_emails):
             acc = accounts[email]
 
             # Account Header
@@ -242,20 +242,22 @@ class UsagePopup:
                     anchor="w",
                 ).pack(fill=tk.X)
             else:
+                is_last_account = (idx == len(sorted_emails) - 1)
                 for i, section in enumerate(acc.usage.sections):
                     self._add_section(
                         self._content_frame, section,
                         email=email,
                         top_pad=20 if i == 0 else 2,
+                        is_last=(is_last_account and i == len(acc.usage.sections) - 1),
                     )
 
-            # Simple divider between accounts
-            tk.Frame(self._content_frame, bg=t.border, height=1).pack(fill=tk.X, pady=2)
+            # Divider between accounts and before the bottom bar
+            tk.Frame(self._content_frame, bg=t.border, height=1).pack(fill=tk.X, pady=(20, 12))
 
         self._refresh_btn.configure(state=tk.NORMAL)
         self._reposition_and_resize()
 
-    def _add_section(self, parent: tk.Frame, section: UsageSection, email: str, top_pad: int = 2):
+    def _add_section(self, parent: tk.Frame, section: UsageSection, email: str, top_pad: int = 2, is_last: bool = False):
         """Add a usage section with label, canvas bar, and reset info."""
         t = theme_mod.current()
         frame = tk.Frame(parent, bg=t.bg, pady=0)
@@ -342,17 +344,18 @@ class UsagePopup:
                 anchor="w",
             ).pack(fill=tk.X)
 
-        # Separator line
-        sep_frame = tk.Frame(frame, bg=t.bg, height=1)
-        sep_frame.pack(fill=tk.X, pady=(2, 0))
-        tk.Label(
-            sep_frame,
-            text="=" * 80,
-            bg=t.bg, fg=t.border,
-            font=t.font_separator,
-            pady=0,
-            anchor="n",
-        ).pack(fill=tk.X)
+        # Separator line (omitted after the last section of the last account)
+        if not is_last:
+            sep_frame = tk.Frame(frame, bg=t.bg, height=1)
+            sep_frame.pack(fill=tk.X, pady=(2, 0))
+            tk.Label(
+                sep_frame,
+                text="=" * 80,
+                bg=t.bg, fg=t.border,
+                font=t.font_separator,
+                pady=0,
+                anchor="n",
+            ).pack(fill=tk.X)
 
     # ------------------------------------------------------------------
     # Settings windows

@@ -10,8 +10,10 @@ import sys
 
 APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".ccwinusage")
 APP_LOGS_DIR = os.path.join(APP_DATA_DIR, "logs")
+CUSTOM_THEMES_DIR = os.path.join(APP_DATA_DIR, "themes")
 
 os.makedirs(APP_LOGS_DIR, exist_ok=True)
+os.makedirs(CUSTOM_THEMES_DIR, exist_ok=True)
 
 SETTINGS_FILE = os.path.join(APP_DATA_DIR, "user_settings.json")
 STORAGE_FILE = os.path.join(APP_DATA_DIR, "accounts_usage.json")

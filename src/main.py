@@ -60,9 +60,13 @@ class ClaudeUsageTray:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Start on Windows startup", self._toggle_startup,
                              checked=lambda item: is_startup_enabled()),
+            pystray.MenuItem("Themes", self._open_themes_menu),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
         )
+
+    def _open_themes_menu(self):
+        self.root.after(0, self.popup._open_theme_selector)
 
     def _start_tray(self):
         icon_img = generate_loading_icon()

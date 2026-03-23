@@ -117,6 +117,22 @@ def _parse_reset_time(time_str: str) -> "datetime | None":
                     pass
         return None
 
+    # "Apr 1" (date only, no time — assume midnight)
+    date_only_match = re.match(r'([A-Za-z]{3})\s+(\d{1,2})$', time_str)
+    if date_only_match:
+        month_str, day_str = date_only_match.groups()
+        month_num = _month_abbr_to_num(month_str)
+        if month_num is not None:
+            day = int(day_str)
+            try:
+                dt = datetime(now.year, month_num, day, 0, 0)
+                if (now - dt).days > 7:
+                    dt = datetime(now.year + 1, month_num, day, 0, 0)
+                return dt
+            except ValueError:
+                pass
+        return None
+
     # Time-only: "1 pm", "1pm", "9:30 am", "13:00"
     t = _parse_time_of_day(time_str)
     if t is not None:

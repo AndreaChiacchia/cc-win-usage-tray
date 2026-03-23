@@ -30,7 +30,7 @@ class AccountUsage:
 # Regex patterns
 _EMAIL_RE = re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
 _SECTION_HEADER_RE = re.compile(
-    r'(Current session|Current week[^\n]*|Extra usage)',
+    r'(Current session|Current week|Extra usage)',
     re.IGNORECASE
 )
 _PERCENTAGE_RE = re.compile(r'(\d+)%\s*used')

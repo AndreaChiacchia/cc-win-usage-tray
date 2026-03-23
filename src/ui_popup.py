@@ -5,6 +5,7 @@ from datetime import datetime
 
 import settings as settings_mod
 import theme as theme_mod
+import time_utils
 from version import __version__
 from config import (
     POPUP_WIDTH, POPUP_PADDING, TASKBAR_OFFSET,
@@ -34,6 +35,7 @@ class UsagePopup:
         self._on_refresh_interval_changed_cb = None
         self._settings_windows: dict[str, tk.Toplevel] = {}
         self._last_accounts: dict | None = None
+        self._relative_timer_id = None
 
         t = theme_mod.current()
 
@@ -208,17 +210,22 @@ class UsagePopup:
             ).pack(fill=tk.X, pady=(4, 0))
 
             # Timestamp row with cog for account settings
-            try:
-                dt = datetime.fromisoformat(acc.last_updated)
-                ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-            except Exception:
-                ts_str = acc.last_updated
+            use_relative = settings_mod.get_relative_time_enabled(email)
+            if use_relative:
+                ts_label = f"  {time_utils.format_last_sync_relative(acc.last_updated)}"
+            else:
+                try:
+                    dt = datetime.fromisoformat(acc.last_updated)
+                    ts_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    ts_str = acc.last_updated
+                ts_label = f"  Last sync: {ts_str}"
 
             sync_row = tk.Frame(self._content_frame, bg=t.bg)
             sync_row.pack(fill=tk.X)
             tk.Label(
                 sync_row,
-                text=f"  Last sync: {ts_str}",
+                text=ts_label,
                 bg=t.bg, fg=t.fg_dim,
                 font=t.font,
                 anchor="w",
@@ -307,11 +314,15 @@ class UsagePopup:
         _em = email
         _sl = section.label
         if section.reset_info:
+            if settings_mod.get_relative_time_enabled(email):
+                display_reset = time_utils.format_reset_relative(section.reset_info)
+            else:
+                display_reset = section.reset_info
             reset_row = tk.Frame(frame, bg=t.bg)
             reset_row.pack(fill=tk.X, pady=(2, 0))
             tk.Label(
                 reset_row,
-                text=section.reset_info,
+                text=display_reset,
                 bg=t.bg, fg=t.fg_dim,
                 font=t.font,
                 anchor="w",
@@ -486,7 +497,27 @@ class UsagePopup:
         )
         notif_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
 
-        self._center_window(win, 380, 220)
+        rel_var = tk.BooleanVar(value=settings_mod.get_relative_time_enabled(email))
+
+        def _on_relative_toggle():
+            settings_mod.set_relative_time_enabled(email, rel_var.get())
+            self._rebuild_content()
+
+        rel_cb = tk.Checkbutton(
+            inner,
+            text="Show relative times",
+            variable=rel_var,
+            bg=t.bg, fg=t.fg,
+            selectcolor=t.bar_bg,
+            activebackground=t.bg, activeforeground=t.fg,
+            font=t.font,
+            anchor="w",
+            command=_on_relative_toggle,
+            **t.checkbutton_style_kwargs(),
+        )
+        rel_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
+
+        self._center_window(win, 380, 260)
         win.focus_force()
 
     def _open_threshold_settings(self, email: str, section_label: str):
@@ -785,6 +816,22 @@ class UsagePopup:
         else:
             self.show_loading()
 
+    def _start_relative_timer(self):
+        self._cancel_relative_timer()
+        self._relative_timer_id = self.root.after(60_000, self._tick_relative)
+
+    def _tick_relative(self):
+        if not self._visible or self._last_accounts is None:
+            return
+        if any(settings_mod.get_relative_time_enabled(em) for em in self._last_accounts):
+            self._rebuild_content()
+        self._start_relative_timer()
+
+    def _cancel_relative_timer(self):
+        if self._relative_timer_id:
+            self.root.after_cancel(self._relative_timer_id)
+            self._relative_timer_id = None
+
     # ------------------------------------------------------------------
 
     def _reposition_and_resize(self):
@@ -847,10 +894,12 @@ class UsagePopup:
         else:
             self.win.attributes("-topmost", True)
         self._visible = True
+        self._start_relative_timer()
 
     def hide(self):
         self.win.withdraw()
         self._visible = False
+        self._cancel_relative_timer()
 
     def set_refresh_callback(self, callback):
         self._on_refresh_cb = callback

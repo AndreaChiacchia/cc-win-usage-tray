@@ -363,6 +363,15 @@ def close_session():
             _session = None
 
 
+def force_restart_session():
+    """Kill the singleton PTY so the next query spawns a fresh session."""
+    global _session
+    with _session_lock:
+        if _session is not None:
+            _session.close()
+            _session = None
+
+
 # ------------------------------------------------------------------
 # Public threaded runner — same API as before, transparent to main.py
 # ------------------------------------------------------------------

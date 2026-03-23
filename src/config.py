@@ -41,3 +41,12 @@ ICON_SIZE = 64
 
 # Notification settings
 NOTIFICATION_THRESHOLD_STEP = 10  # Notify every N% (used by notifier.py)
+
+# Progress bar
+BAR_HEIGHT = 18
+
+# Animation
+ANIM_FRAME_MS = 33            # ~30 FPS
+ANIM_BAR_DURATION_MS = 600    # fill transition duration (ms)
+ANIM_SHIMMER_WIDTH = 65       # shimmer band width (px)
+ANIM_SHIMMER_SPEED = 10       # shimmer pixels per frame

@@ -63,6 +63,18 @@ def parse_usage(text: str) -> UsageData:
             error="Could not parse usage data — unexpected format"
         )
 
+    # Filter out "Extra usage" headers whose section contains "not enabled" and no percentage
+    filtered_headers = []
+    for i, match in enumerate(headers):
+        if "Extra usage" in match.group(1):
+            start = match.start()
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            section_text = text[start:end]
+            if "not enabled" in section_text.lower() and not _PERCENTAGE_RE.search(section_text):
+                continue
+        filtered_headers.append(match)
+    headers = filtered_headers
+
     # Extract all sections bounded by headers
     sections = []
     for i, match in enumerate(headers):
@@ -100,6 +112,9 @@ def parse_usage(text: str) -> UsageData:
             
             # Ensure there is a space after 'Resets' if followed directly by a number or character
             reset_info = re.sub(r'^(Resets)(?=[^\s])', r'\1 ', reset_info, flags=re.IGNORECASE)
+
+            # Strip any trailing "Extra usage..." text that may have leaked from raw PTY stream
+            reset_info = re.sub(r'Extra usage.*$', '', reset_info, flags=re.IGNORECASE).strip()
 
         sections.append(UsageSection(
             label=label,

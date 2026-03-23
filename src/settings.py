@@ -62,3 +62,25 @@ def set_notifications_enabled(email: str, val: bool):
     s = load_settings()
     s.setdefault(email, {})["notifications_enabled"] = val
     save_settings(s)
+
+
+def get_relative_time_enabled(email: str) -> bool:
+    s = load_settings()
+    return s.get(email, {}).get("relative_time", False)
+
+
+def set_relative_time_enabled(email: str, val: bool):
+    s = load_settings()
+    s.setdefault(email, {})["relative_time"] = val
+    save_settings(s)
+
+
+def get_theme_name() -> str:
+    s = load_settings()
+    return s.get("_global", {}).get("theme", "Claude Code")
+
+
+def set_theme_name(name: str):
+    s = load_settings()
+    s.setdefault("_global", {})["theme"] = name
+    save_settings(s)

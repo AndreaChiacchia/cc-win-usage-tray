@@ -39,6 +39,13 @@ def load_all_accounts() -> dict[str, AccountUsage]:
         print(f"Error loading accounts: {e}")
         return {}
 
+def save_all_accounts(accounts: dict[str, AccountUsage]):
+    try:
+        with open(STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump({k: _account_usage_to_dict(v) for k, v in accounts.items()}, f, indent=2)
+    except Exception as e:
+        print(f"Error saving accounts: {e}")
+
 def save_account(account: AccountUsage):
     accounts = load_all_accounts()
     accounts[account.email] = account

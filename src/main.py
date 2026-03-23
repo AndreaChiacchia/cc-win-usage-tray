@@ -184,7 +184,7 @@ class ClaudeUsageTray:
     def _apply_data(self, accounts: dict[str, AccountUsage]):
         self.popup.show_usage(accounts)
         self._update_tray_icon(accounts)
-        if self._was_visible_before_refresh:
+        if self._was_visible_before_refresh and self.popup.visible:
             self.popup.show(steal_focus=False)
         self.popup.finish_refresh()
 

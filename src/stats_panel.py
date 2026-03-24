@@ -224,7 +224,7 @@ class StatsPanel:
         # --- This Week ---
         self._section_title(t, "This Week")
         _day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        week_data = self._aggregate_daily(history, days=7)
+        week_data = self._aggregate_daily(history, days=7, from_week_start=True)
         week_labels = _day_abbrs  # always Mon–Sun
         self._bar_chart(t, week_data, label_fn=lambda i, wl=week_labels: wl[i] if i < len(wl) else "")
         extra = self._extra_spend_in_range(history, _week_start(), _now())
@@ -370,12 +370,15 @@ class StatsPanel:
         return [int(sum(b) / len(b)) if b else 0 for b in buckets]
 
     def _aggregate_daily(
-        self, history: list, days: int, from_month_start: bool = False
+        self, history: list, days: int,
+        from_month_start: bool = False, from_week_start: bool = False
     ) -> list[int]:
         """*days*-element list: avg % per day, oldest-first."""
         now = datetime.now()
         if from_month_start:
             start_date = now.date().replace(day=1)
+        elif from_week_start:
+            start_date = _week_start().date()
         else:
             start_date = (now - timedelta(days=days - 1)).date()
 

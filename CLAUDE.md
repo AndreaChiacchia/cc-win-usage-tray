@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Backlog
+
+Planned features, fixes, and future improvements are tracked in [`BACKLOG.md`](BACKLOG.md) at the repo root. Consult it when picking up new work or when the user asks about planned changes.
+
+---
+
 ## Project Overview
 
 A Windows system tray application that monitors Claude Code usage (session, weekly, extra) by spawning the Claude Code CLI in a PTY, sending `/usage`, and parsing the output. Displays a color-coded popup and tray icon.

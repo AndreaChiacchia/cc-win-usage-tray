@@ -16,6 +16,7 @@ user_settings.json
 
 # Claude local settings
 .claude/
+BACKLOG.md
 
 # Virtual environments
 venv/

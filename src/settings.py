@@ -103,7 +103,28 @@ def set_popup_position(x: int, y: int):
 
 def clear_popup_position():
     s = load_settings()
-    s.get("_global", {}).pop("popup_position", None)
+    g = s.get("_global", {})
+    g.pop("popup_position", None)
+    g.pop("popup_monitor_name", None)
+    g.pop("popup_monitor_offset", None)
+    save_settings(s)
+
+
+def get_popup_monitor_info() -> tuple[str, tuple[int, int]] | None:
+    s = load_settings()
+    g = s.get("_global", {})
+    name = g.get("popup_monitor_name")
+    offset = g.get("popup_monitor_offset")
+    if name and offset and isinstance(offset, list) and len(offset) == 2:
+        return (name, (int(offset[0]), int(offset[1])))
+    return None
+
+
+def set_popup_monitor_info(monitor_name: str, offset_x: int, offset_y: int):
+    s = load_settings()
+    g = s.setdefault("_global", {})
+    g["popup_monitor_name"] = monitor_name
+    g["popup_monitor_offset"] = [offset_x, offset_y]
     save_settings(s)
 
 

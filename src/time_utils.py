@@ -37,6 +37,32 @@ def format_last_sync_relative(iso_timestamp: str) -> str:
         return iso_timestamp
 
 
+def parse_reset_datetime(reset_info: str, reference: "datetime | None" = None) -> "datetime | None":
+    """Parse a reset_info string into a datetime. Returns None if unparseable.
+
+    If ``reference`` is provided, relative times ("9am", "tomorrow 9am") are
+    resolved against it instead of the current wall-clock time.  This is used
+    when evaluating data that was captured in the past so that a reset time
+    that has already passed is correctly identified as past.
+    """
+    try:
+        tz_match = re.search(r'\(([^)]+)\)', reset_info)
+        tz_annotation = tz_match.group(0) if tz_match else ""
+
+        clean = reset_info
+        if tz_annotation:
+            clean = clean.replace(tz_annotation, "").strip()
+
+        parts = clean.split(None, 1)
+        if len(parts) < 2:
+            return None
+        time_str = parts[1].strip()
+
+        return _parse_reset_time(time_str, ref_dt=reference)
+    except Exception:
+        return None
+
+
 def format_reset_relative(reset_info: str) -> str:
     """Return a human-readable relative reset time, e.g. 'Resets in 3 hours'.
 
@@ -78,10 +104,10 @@ def format_reset_relative(reset_info: str) -> str:
         return reset_info
 
 
-def _parse_reset_time(time_str: str) -> "datetime | None":
+def _parse_reset_time(time_str: str, ref_dt: "datetime | None" = None) -> "datetime | None":
     """Parse various time formats into a datetime. Returns None on failure."""
-    now = datetime.now()
-    today = date.today()
+    now = ref_dt or datetime.now()
+    today = now.date()
 
     # Normalize: collapse multiple spaces
     time_str = re.sub(r'\s+', ' ', time_str).strip()

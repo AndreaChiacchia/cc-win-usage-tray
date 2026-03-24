@@ -305,12 +305,16 @@ class UsagePopup:
 
                 # Update reset label if tracked
                 reset_lbl = refs.get("reset_label")
-                if reset_lbl and reset_lbl.winfo_exists() and section.reset_info:
-                    if settings_mod.get_relative_time_enabled(email):
-                        display_reset = time_utils.format_reset_relative(section.reset_info)
+                if reset_lbl and reset_lbl.winfo_exists():
+                    if section.reset_info:
+                        if settings_mod.get_relative_time_enabled(email):
+                            display_reset = time_utils.format_reset_relative(section.reset_info)
+                        else:
+                            display_reset = section.reset_info
+                        reset_lbl.configure(text=display_reset)
+                        reset_lbl.master.pack(fill=tk.X, pady=(2, 0))
                     else:
-                        display_reset = section.reset_info
-                    reset_lbl.configure(text=display_reset)
+                        reset_lbl.configure(text="Usage data may be outdated")
 
                 # Extract old/new spent for animation
                 old_spent_info = refs.get("spent_info")
@@ -579,6 +583,16 @@ class UsagePopup:
                 self._anim_after_ids.append(aid)
             else:
                 refs["current_pct"] = new_pct
+                if not animate_spent:
+                    section_lbl = refs.get("section_label")
+                    new_spent_info = refs.get("spent_info")
+                    if section_lbl and section_lbl.winfo_exists():
+                        label_base = refs.get("label_text", key[1])
+                        lbl_text = (
+                            f"{label_base} · {new_spent_info}"
+                            if new_spent_info else label_base
+                        )
+                        section_lbl.configure(text=lbl_text)
 
         aid = self.root.after(0, _tick)
         self._anim_after_ids.append(aid)
@@ -632,8 +646,7 @@ class UsagePopup:
         )
         pct_lbl.pack(side=tk.RIGHT)
 
-        # Reset info row with cog, or standalone cog when reset_info is absent
-        reset_lbl = None
+        # Reset info row with cog
         _em = email
         _sl = section.label
         if section.reset_info:
@@ -641,33 +654,25 @@ class UsagePopup:
                 display_reset = time_utils.format_reset_relative(section.reset_info)
             else:
                 display_reset = section.reset_info
-            reset_row = tk.Frame(frame, bg=t.bg)
-            reset_row.pack(fill=tk.X, pady=(2, 0))
-            reset_lbl = tk.Label(
-                reset_row,
-                text=display_reset,
-                bg=t.bg, fg=t.fg_dim,
-                font=t.font,
-                anchor="w",
-            )
-            reset_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            cog = tk.Label(
-                reset_row, text="⚙",
-                bg=t.bg, fg=t.fg_dim,
-                font=t.font, cursor="hand2",
-            )
-            cog.pack(side=tk.RIGHT)
-            cog.bind("<Button-1>", lambda e, em=_em, sl=_sl: self._open_threshold_settings(em, sl))
         else:
-            cog_row = tk.Frame(frame, bg=t.bg)
-            cog_row.pack(fill=tk.X, pady=(2, 0))
-            cog = tk.Label(
-                cog_row, text="⚙",
-                bg=t.bg, fg=t.fg_dim,
-                font=t.font, cursor="hand2", anchor="w",
-            )
-            cog.pack(side=tk.LEFT)
-            cog.bind("<Button-1>", lambda e, em=_em, sl=_sl: self._open_threshold_settings(em, sl))
+            display_reset = "Usage data may be outdated"
+        reset_row = tk.Frame(frame, bg=t.bg)
+        reset_row.pack(fill=tk.X, pady=(2, 0))
+        reset_lbl = tk.Label(
+            reset_row,
+            text=display_reset,
+            bg=t.bg, fg=t.fg_dim,
+            font=t.font,
+            anchor="w",
+        )
+        reset_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        cog = tk.Label(
+            reset_row, text="⚙",
+            bg=t.bg, fg=t.fg_dim,
+            font=t.font, cursor="hand2",
+        )
+        cog.pack(side=tk.RIGHT)
+        cog.bind("<Button-1>", lambda e, em=_em, sl=_sl: self._open_threshold_settings(em, sl))
 
         # Separator line (omitted after the last section of the last account)
         if not is_last:

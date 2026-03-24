@@ -9,6 +9,7 @@ import pystray
 from datetime import datetime
 
 from claude_runner import run_usage_threaded
+from time_utils import parse_reset_datetime
 from usage_parser import parse_usage, parse_email, UsageData, AccountUsage
 import paths
 import storage
@@ -16,6 +17,31 @@ import settings as settings_mod
 from startup import is_startup_enabled, set_startup_enabled
 from ui_popup import UsagePopup
 from icon_generator import generate_icon, generate_loading_icon, generate_error_icon
+
+
+def _apply_expired_resets(accounts: dict) -> bool:
+    """Zero out sections whose reset time has passed for inactive accounts.
+    Returns True if any account was modified."""
+    any_changed = False
+    now = datetime.now()
+    for acc in accounts.values():
+        if acc.is_active:
+            continue
+        acc_changed = False
+        ref_dt = datetime.fromisoformat(acc.last_updated) if acc.last_updated else None
+        for section in acc.usage.sections:
+            if not section.reset_info:
+                continue
+            reset_dt = parse_reset_datetime(section.reset_info, reference=ref_dt)
+            if reset_dt is not None and reset_dt < now:
+                section.percentage = 0
+                section.reset_info = ""
+                section.spent_info = None
+                acc_changed = True
+        if acc_changed:
+            acc.last_updated = now.isoformat()
+            any_changed = True
+    return any_changed
 
 
 class ClaudeUsageTray:
@@ -51,6 +77,8 @@ class ClaudeUsageTray:
                 latest = max(saved.keys(), key=lambda e: saved[e].last_updated)
                 for email_key, acc in saved.items():
                     acc.is_active = (email_key == latest)
+                storage.save_all_accounts(saved)
+            if _apply_expired_resets(saved):
                 storage.save_all_accounts(saved)
             self.popup.show_usage(saved)
 
@@ -204,6 +232,9 @@ class ClaudeUsageTray:
                     last_updated=datetime.now().isoformat(),
                     is_active=True
                 )
+            else:
+                if _apply_expired_resets(all_accounts):
+                    storage.save_all_accounts(all_accounts)
             self.root.after(0, lambda: self._apply_data(all_accounts))
         except Exception as e:
             print(f"Error in _on_usage_error: {e}")
@@ -211,6 +242,8 @@ class ClaudeUsageTray:
             self._refreshing = False
 
     def _apply_data(self, accounts: dict[str, AccountUsage]):
+        if _apply_expired_resets(accounts):
+            storage.save_all_accounts(accounts)
         self.popup.show_usage(accounts)
         self.popup.finish_refresh()
         self._update_tray_icon(accounts)

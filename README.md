@@ -2,7 +2,7 @@
 
 A Windows system tray application that monitors [Claude Code](https://claude.ai/code) usage in real time — session, weekly, and extra tokens — with a dark-themed popup, color-coded progress bars, and Windows toast notifications.
 
-![version](https://img.shields.io/badge/version-v1.5.0-blue)
+![version](https://img.shields.io/badge/version-v1.5.1-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)

@@ -101,6 +101,12 @@ def set_popup_position(x: int, y: int):
     save_settings(s)
 
 
+def clear_popup_position():
+    s = load_settings()
+    s.get("_global", {}).pop("popup_position", None)
+    save_settings(s)
+
+
 def get_always_on_top() -> bool:
     s = load_settings()
     return s.get("_global", {}).get("always_on_top", True)

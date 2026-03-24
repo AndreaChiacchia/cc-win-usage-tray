@@ -1,5 +1,6 @@
 """Tkinter popup window with usage progress bars."""
 
+import ctypes
 import re
 import tkinter as tk
 import time
@@ -67,6 +68,7 @@ class UsagePopup:
         # Drag state
         self._drag_data = {"x": 0, "y": 0}
         self._custom_position: tuple[int, int] | None = settings_mod.get_popup_position()
+        self._screen_check_id = None
 
         # Always-on-top state (default True preserves existing behavior)
         self._always_on_top: bool = settings_mod.get_always_on_top()
@@ -1241,6 +1243,7 @@ class UsagePopup:
         self._visible = True
         self._refresh_sync_labels()
         self._start_relative_timer()
+        self._start_screen_check()
         # If a refresh is in progress and bars exist, start shimmer
         if self._refreshing and self._bar_widgets and not self._shimmer_active:
             for lbl in self._sync_labels.values():
@@ -1253,6 +1256,7 @@ class UsagePopup:
         self.win.withdraw()
         self._visible = False
         self._cancel_relative_timer()
+        self._stop_screen_check()
 
     def set_refresh_callback(self, callback):
         self._on_refresh_cb = callback
@@ -1289,6 +1293,54 @@ class UsagePopup:
     def _on_drag_end(self, event):
         if self._custom_position:
             settings_mod.set_popup_position(*self._custom_position)
+
+    # ------------------------------------------------------------------
+    # Monitor-change guard
+    # ------------------------------------------------------------------
+
+    def _ensure_on_screen(self):
+        """Reposition popup if it has drifted off-screen (e.g. monitor disconnected)."""
+        if not self._visible:
+            return
+        try:
+            user32 = ctypes.windll.user32
+            vx = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN
+            vy = user32.GetSystemMetrics(77)   # SM_YVIRTUALSCREEN
+            vw = user32.GetSystemMetrics(78)   # SM_CXVIRTUALSCREEN
+            vh = user32.GetSystemMetrics(79)   # SM_CYVIRTUALSCREEN
+        except Exception:
+            self._screen_check_id = self.root.after(2500, self._ensure_on_screen)
+            return
+
+        wx = self.win.winfo_x()
+        wy = self.win.winfo_y()
+        ww = self.win.winfo_width()
+        wh = self.win.winfo_height()
+
+        # Require at least 50px of the popup to be inside the virtual desktop
+        margin = 50
+        on_screen = (
+            wx + ww > vx + margin
+            and wx < vx + vw - margin
+            and wy + wh > vy + margin
+            and wy < vy + vh - margin
+        )
+
+        if not on_screen:
+            self._custom_position = None
+            settings_mod.clear_popup_position()
+            self._reposition_and_resize()
+
+        self._screen_check_id = self.root.after(2500, self._ensure_on_screen)
+
+    def _start_screen_check(self):
+        if self._screen_check_id is None:
+            self._screen_check_id = self.root.after(2500, self._ensure_on_screen)
+
+    def _stop_screen_check(self):
+        if self._screen_check_id is not None:
+            self.root.after_cancel(self._screen_check_id)
+            self._screen_check_id = None
 
     # ------------------------------------------------------------------
     # Always-on-top

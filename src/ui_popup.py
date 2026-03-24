@@ -15,8 +15,10 @@ from config import (
     COLOR_GREEN_MAX, COLOR_YELLOW_MAX,
     BAR_HEIGHT, ANIM_FRAME_MS, ANIM_BAR_DURATION_MS,
     ANIM_SHIMMER_WIDTH, ANIM_SHIMMER_SPEED,
+    POPUP_MAX_CONTENT_HEIGHT,
 )
 from usage_parser import UsageSection, AccountUsage
+from stats_panel import StatsPanel
 
 
 def _lighten_color(hex_color: str, factor: float = 0.3) -> str:
@@ -64,6 +66,11 @@ class UsagePopup:
         self._anim_after_ids: list = []
         self._anim_generation = 0
         self._last_active_email: str | None = None
+
+        # Scroll state
+        self._sb_hover = False
+        self._drag_start_y = None
+        self._drag_start_frac = None
 
         # Drag state
         self._drag_data = {"x": 0, "y": 0}
@@ -132,9 +139,36 @@ class UsagePopup:
         )
         self._close_btn.pack(side=tk.RIGHT)
 
-        # Content area (will be rebuilt on each update)
-        self._content_frame = tk.Frame(self._inner, bg=t.bg)
-        self._content_frame.pack(fill=tk.BOTH, expand=True)
+        # Scrollable content area
+        _SB_W = 8
+        self._scroll_wrapper = tk.Frame(self._inner, bg=t.bg)
+        self._scroll_wrapper.pack(fill=tk.X)
+
+        # Scrollbar canvas — always packed RIGHT so scroll_canvas expand=True works correctly;
+        # width=0 hides it, width=_SB_W shows it.
+        self._sb_canvas = tk.Canvas(
+            self._scroll_wrapper, width=0, height=1,
+            bg=t.bar_bg, highlightthickness=0, cursor="arrow",
+        )
+        self._sb_canvas.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self._scroll_canvas = tk.Canvas(
+            self._scroll_wrapper, bg=t.bg, highlightthickness=0, height=1,
+        )
+        self._scroll_canvas.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self._content_frame = tk.Frame(self._scroll_canvas, bg=t.bg)
+        self._scroll_canvas_window = self._scroll_canvas.create_window(
+            (0, 0), window=self._content_frame, anchor="nw",
+        )
+
+        self._scroll_canvas.configure(yscrollcommand=self._update_scroll_sb)
+        self._scroll_canvas.bind("<Configure>", self._on_scroll_canvas_configure)
+        self._sb_canvas.bind("<Button-1>", self._sb_button1)
+        self._sb_canvas.bind("<B1-Motion>", self._sb_motion)
+        self._sb_canvas.bind("<ButtonRelease-1>", self._sb_release)
+        self._sb_canvas.bind("<Enter>", self._sb_enter)
+        self._sb_canvas.bind("<Leave>", self._sb_leave)
 
         # Bottom bar: version + refresh button
         self._bottom = tk.Frame(self._inner, bg=t.bg)
@@ -166,6 +200,86 @@ class UsagePopup:
 
         self.win.protocol("WM_DELETE_WINDOW", self.hide)
 
+        self._stats_panel = StatsPanel(root, self.win)
+
+    # ------------------------------------------------------------------
+    # Scroll helpers
+    # ------------------------------------------------------------------
+
+    def _on_scroll_canvas_configure(self, event):
+        """Keep content_frame width in sync with scroll canvas width."""
+        self._scroll_canvas.itemconfigure(self._scroll_canvas_window, width=event.width)
+
+    def _update_scroll_sb(self, first, last):
+        first, last = float(first), float(last)
+        t = theme_mod.current()
+        self._sb_canvas.delete("all")
+        h = self._sb_canvas.winfo_height()
+        if h <= 1:
+            return
+        self._sb_canvas.create_rectangle(0, 0, 8, h, fill=t.bar_bg, outline="")
+        if last - first < 1.0:
+            y1 = int(first * h)
+            y2 = int(last * h)
+            color = t.fg if self._sb_hover else t.fg_dim
+            self._sb_canvas.create_rectangle(1, y1, 7, y2, fill=color, outline="")
+
+    def _sb_button1(self, event):
+        h = self._sb_canvas.winfo_height()
+        if h <= 1:
+            return
+        self._drag_start_y = event.y
+        self._drag_start_frac = self._scroll_canvas.yview()[0]
+
+    def _sb_motion(self, event):
+        if self._drag_start_y is None:
+            return
+        h = self._sb_canvas.winfo_height()
+        if h <= 1:
+            return
+        dy = event.y - self._drag_start_y
+        self._scroll_canvas.yview_moveto(self._drag_start_frac + dy / h)
+
+    def _sb_release(self, event):
+        self._drag_start_y = None
+        self._drag_start_frac = None
+
+    def _sb_enter(self, event):
+        self._sb_hover = True
+        self._update_scroll_sb(*self._scroll_canvas.yview())
+
+    def _sb_leave(self, event):
+        self._sb_hover = False
+        self._update_scroll_sb(*self._scroll_canvas.yview())
+
+    def _on_content_mousewheel(self, event):
+        self._scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _bind_mousewheel_to_content(self):
+        """Recursively bind mousewheel on all content widgets to the scroll canvas."""
+        def _bind(widget):
+            widget.bind("<MouseWheel>", self._on_content_mousewheel)
+            for child in widget.winfo_children():
+                _bind(child)
+        _bind(self._content_frame)
+        self._scroll_canvas.bind("<MouseWheel>", self._on_content_mousewheel)
+
+    def _update_scroll_height(self):
+        """Cap scroll canvas height and show/hide the custom scrollbar based on content size."""
+        self.win.update_idletasks()
+        content_h = self._content_frame.winfo_reqheight()
+        visible_h = min(content_h, POPUP_MAX_CONTENT_HEIGHT)
+
+        self._scroll_canvas.configure(height=visible_h)
+        self._scroll_canvas.configure(scrollregion=(0, 0, 0, content_h))
+
+        if content_h > POPUP_MAX_CONTENT_HEIGHT:
+            self._sb_canvas.configure(width=8, height=visible_h)
+            self._bind_mousewheel_to_content()
+            self.win.after(10, lambda: self._update_scroll_sb(*self._scroll_canvas.yview()))
+        else:
+            self._sb_canvas.configure(width=0)
+
     def apply_theme(self):
         """Reconfigure persistent chrome widgets to the current theme."""
         t = theme_mod.current()
@@ -180,6 +294,9 @@ class UsagePopup:
             font=t.font,
             **t.button_style_kwargs(),
         )
+        self._scroll_wrapper.configure(bg=t.bg)
+        self._scroll_canvas.configure(bg=t.bg)
+        self._sb_canvas.configure(bg=t.bar_bg)
         self._content_frame.configure(bg=t.bg)
         self._bottom.configure(bg=t.bg)
         self._version_label.configure(bg=t.bg, fg=t.fg_dim, font=t.font)
@@ -189,6 +306,7 @@ class UsagePopup:
             font=t.font,
             **t.button_style_kwargs(),
         )
+        self._stats_panel.apply_theme()
 
     def _clear_content(self):
         self._stop_shimmer()
@@ -360,6 +478,7 @@ class UsagePopup:
         """Full widget rebuild (clears and recreates everything)."""
         t = theme_mod.current()
         self._clear_content()
+        self._scroll_canvas.yview_moveto(0)
 
         # Sort accounts to put active one first
         sorted_emails = sorted(accounts.keys(), key=lambda e: (not accounts[e].is_active, e))
@@ -371,13 +490,17 @@ class UsagePopup:
             # Account Header
             header_row = tk.Frame(self._content_frame, bg=t.bg)
             header_row.pack(fill=tk.X, pady=(4, 0))
-            tk.Label(
+            header_label = tk.Label(
                 header_row,
                 text=f"> {email}",
                 bg=t.bg, fg=t.fg_dim,
                 font=t.font_bold,
                 anchor="w",
-            ).pack(side=tk.LEFT)
+                cursor="hand2",
+            )
+            header_label.pack(side=tk.LEFT)
+            header_label.bind("<Enter>", lambda e, em=email: self._on_account_hover_enter(em))
+            header_label.bind("<Leave>", lambda e: self._on_account_hover_leave())
             if acc.is_active and len(accounts) > 1:
                 tk.Label(
                     header_row,
@@ -446,6 +569,19 @@ class UsagePopup:
 
         self._refresh_btn.configure(state=tk.NORMAL)
         self._reposition_and_resize()
+
+    # ------------------------------------------------------------------
+    # Stats panel hover
+    # ------------------------------------------------------------------
+
+    def _on_account_hover_enter(self, email: str):
+        sections = []
+        if self._last_accounts and email in self._last_accounts:
+            sections = self._last_accounts[email].usage.sections
+        self._stats_panel.show(email, sections)
+
+    def _on_account_hover_leave(self):
+        self._stats_panel.hide()
 
     # ------------------------------------------------------------------
     # Shimmer animation
@@ -1191,6 +1327,7 @@ class UsagePopup:
 
     def _reposition_and_resize(self):
         """Position popup above taskbar (or at saved custom position)."""
+        self._update_scroll_height()
         self.win.update_idletasks()
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
@@ -1235,7 +1372,7 @@ class UsagePopup:
         if focused is None:
             self.hide()
             return
-        allowed = {self.win} | {sw for sw in self._settings_windows.values() if sw.winfo_exists()}
+        allowed = {self.win, self._stats_panel.win} | {sw for sw in self._settings_windows.values() if sw.winfo_exists()}
         try:
             curr = focused
             while curr:
@@ -1276,6 +1413,7 @@ class UsagePopup:
         self._visible = False
         self._cancel_relative_timer()
         self._stop_screen_check()
+        self._stats_panel.force_hide()
 
     def set_refresh_callback(self, callback):
         self._on_refresh_cb = callback

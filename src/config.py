@@ -57,3 +57,6 @@ STATS_BAR_MAX_HEIGHT = 120
 STATS_BAR_MIN_HEIGHT = 2
 STATS_CHART_HEIGHT = 150
 STATS_PIN_DURATION_MS = 2000  # ms hovering before panel becomes pinned
+
+# Scrollable popup content area
+POPUP_MAX_CONTENT_HEIGHT = 680  # fits 2 accounts × 3 sections (~669 px); scrollbar only for 3+ accounts

@@ -17,6 +17,7 @@ from config import (
     ANIM_SHIMMER_WIDTH, ANIM_SHIMMER_SPEED,
 )
 from usage_parser import UsageSection, AccountUsage
+from stats_panel import StatsPanel
 
 
 def _lighten_color(hex_color: str, factor: float = 0.3) -> str:
@@ -166,6 +167,8 @@ class UsagePopup:
 
         self.win.protocol("WM_DELETE_WINDOW", self.hide)
 
+        self._stats_panel = StatsPanel(root, self.win)
+
     def apply_theme(self):
         """Reconfigure persistent chrome widgets to the current theme."""
         t = theme_mod.current()
@@ -189,6 +192,7 @@ class UsagePopup:
             font=t.font,
             **t.button_style_kwargs(),
         )
+        self._stats_panel.apply_theme()
 
     def _clear_content(self):
         self._stop_shimmer()
@@ -371,13 +375,17 @@ class UsagePopup:
             # Account Header
             header_row = tk.Frame(self._content_frame, bg=t.bg)
             header_row.pack(fill=tk.X, pady=(4, 0))
-            tk.Label(
+            header_label = tk.Label(
                 header_row,
                 text=f"> {email}",
                 bg=t.bg, fg=t.fg_dim,
                 font=t.font_bold,
                 anchor="w",
-            ).pack(side=tk.LEFT)
+                cursor="hand2",
+            )
+            header_label.pack(side=tk.LEFT)
+            header_label.bind("<Enter>", lambda e, em=email: self._on_account_hover_enter(em))
+            header_label.bind("<Leave>", lambda e: self._on_account_hover_leave())
             if acc.is_active and len(accounts) > 1:
                 tk.Label(
                     header_row,
@@ -446,6 +454,19 @@ class UsagePopup:
 
         self._refresh_btn.configure(state=tk.NORMAL)
         self._reposition_and_resize()
+
+    # ------------------------------------------------------------------
+    # Stats panel hover
+    # ------------------------------------------------------------------
+
+    def _on_account_hover_enter(self, email: str):
+        sections = []
+        if self._last_accounts and email in self._last_accounts:
+            sections = self._last_accounts[email].usage.sections
+        self._stats_panel.show(email, sections)
+
+    def _on_account_hover_leave(self):
+        self._stats_panel.hide()
 
     # ------------------------------------------------------------------
     # Shimmer animation
@@ -1235,7 +1256,7 @@ class UsagePopup:
         if focused is None:
             self.hide()
             return
-        allowed = {self.win} | {sw for sw in self._settings_windows.values() if sw.winfo_exists()}
+        allowed = {self.win, self._stats_panel.win} | {sw for sw in self._settings_windows.values() if sw.winfo_exists()}
         try:
             curr = focused
             while curr:
@@ -1276,6 +1297,7 @@ class UsagePopup:
         self._visible = False
         self._cancel_relative_timer()
         self._stop_screen_check()
+        self._stats_panel.force_hide()
 
     def set_refresh_callback(self, callback):
         self._on_refresh_cb = callback

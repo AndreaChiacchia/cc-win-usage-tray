@@ -50,3 +50,10 @@ ANIM_FRAME_MS = 33            # ~30 FPS
 ANIM_BAR_DURATION_MS = 600    # fill transition duration (ms)
 ANIM_SHIMMER_WIDTH = 65       # shimmer band width (px)
 ANIM_SHIMMER_SPEED = 10       # shimmer pixels per frame
+
+# Stats Panel
+STATS_PANEL_WIDTH = 700
+STATS_BAR_MAX_HEIGHT = 120
+STATS_BAR_MIN_HEIGHT = 2
+STATS_CHART_HEIGHT = 150
+STATS_PIN_DURATION_MS = 2000  # ms hovering before panel becomes pinned

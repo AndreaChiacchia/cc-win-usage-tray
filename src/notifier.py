@@ -4,6 +4,7 @@ import os
 import sys
 from winotify import Notification, audio
 from usage_parser import AccountUsage
+import pace_delta as pace_delta_mod
 import settings as settings_mod
 import paths
 
@@ -84,7 +85,13 @@ def check_and_notify(old_accounts: dict[str, AccountUsage],
         for section in new_acc.usage.sections:
             old_pct = _get_old_percentage(old_acc, section.label)
             new_pct = section.percentage
-            _check_section(email, section.label, old_pct, new_pct)
+            if settings_mod.get_pace_delta_enabled(email):
+                delta = pace_delta_mod.compute_pace_delta(
+                    section.label, new_pct, section.reset_info
+                )
+            else:
+                delta = None
+            _check_section(email, section.label, old_pct, new_pct, delta)
 
 
 def _get_old_percentage(old_acc: AccountUsage | None, label: str) -> int:
@@ -97,7 +104,8 @@ def _get_old_percentage(old_acc: AccountUsage | None, label: str) -> int:
     return 0
 
 
-def _check_section(email: str, label: str, old_pct: int, new_pct: int):
+def _check_section(email: str, label: str, old_pct: int, new_pct: int,
+                   delta: int | None = None):
     """Fire notification if a threshold boundary was crossed upward."""
     key = (email, label)
     threshold_step = settings_mod.get_notification_threshold(email, label)
@@ -107,7 +115,7 @@ def _check_section(email: str, label: str, old_pct: int, new_pct: int):
     new_threshold = (new_pct // threshold_step) * threshold_step
 
     if new_threshold > last and new_threshold > 0:
-        _fire_notification(email, label, new_pct, new_threshold)
+        _fire_notification(email, label, new_pct, new_threshold, delta)
         _last_notified[key] = new_threshold
 
 
@@ -141,13 +149,20 @@ _LABEL_TO_TITLE = {
 }
 
 
-def _fire_notification(email: str, label: str, pct: int, threshold: int):
+def _fire_notification(email: str, label: str, pct: int, threshold: int,
+                       delta: int | None = None):
     """Send a Windows toast notification."""
     title_prefix = _LABEL_TO_TITLE.get(label, f"{label} at")
+    if delta is not None and delta > 0:
+        pace_suffix = f" under budget -> +{delta}%"
+    elif delta is not None and delta < 0:
+        pace_suffix = f" over budget -> -{abs(delta)}%"
+    else:
+        pace_suffix = ""
     toast = Notification(
         app_id=APP_ID,
         title=f"{title_prefix} {pct}%",
-        msg=f"{email} -> {pct}%",
+        msg=f"{email} -> {pct}%{('\n' + pace_suffix.strip()) if pace_suffix else ''}",
         icon=_get_icon_path(),
         duration="short",
     )

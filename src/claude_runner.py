@@ -251,8 +251,8 @@ class ClaudePtySession:
 
             if (
                 ("@" in clean or "logged" in clean.lower())
-                or (silence > 0.8 and len(clean.strip()) > 0)
-                or elapsed > 3.0
+                or (silence > 0.5 and len(clean.strip()) > 0)
+                or elapsed > 2.0
             ):
                 return buf
 
@@ -283,11 +283,11 @@ class ClaudePtySession:
 
             if _USAGE_HEADER_RE.search(clean):
                 # Wait a bit more for the full output, then drain
-                time.sleep(1.0)
+                time.sleep(0.4)
                 buf += self._drain_to_str()
                 return buf
 
-            if silence > 5.0 and len(clean.strip()) > 10:
+            if silence > 3.0 and len(clean.strip()) > 10:
                 return buf
 
             time.sleep(0.05)
@@ -312,7 +312,7 @@ class ClaudePtySession:
             self._proc.write("/status\r")
             status_raw = self._capture_status()
             self._proc.write("\x1b")   # dismiss status overlay
-            time.sleep(0.2)
+            time.sleep(0.1)
             self._drain_queue()
 
             # 2. Resize trick + /usage
@@ -322,12 +322,12 @@ class ClaudePtySession:
                 self._proc.setwinsize(PTY_ROWS, PTY_COLS)
             except Exception:
                 pass
-            time.sleep(0.1)
+            time.sleep(0.05)
 
             self._proc.write("/usage\r")
             usage_raw = self._capture_usage()
             self._proc.write("\x1b")   # dismiss usage overlay, return to prompt
-            time.sleep(0.2)
+            time.sleep(0.1)
             self._drain_queue()
 
             return strip_ansi(status_raw), strip_ansi(usage_raw)

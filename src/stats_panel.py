@@ -214,9 +214,11 @@ class StatsPanel:
         self._section_title(t, "Today")
         today_data = usage_history.get_hourly_avg(email, now.date())
         self._bar_chart(t, today_data, label_fn=lambda i: str(i) if i % 3 == 0 else "")
-        extra = usage_history.get_max_extra_spend(email, _today_start(), now)
+        extra = usage_history.get_extra_spend_delta(email, _today_start(), now)
         if extra:
-            self._dim_label(t, f"Extra spend today: {extra}")
+            self._extra_spend_label(t, "Extra spend today: ", extra)
+        else:
+            self._dim_label(t, "No extra spending")
 
         self._separator(t)
 
@@ -225,9 +227,11 @@ class StatsPanel:
         _day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         week_data = usage_history.get_daily_avg(email, _week_start().date(), 7)
         self._bar_chart(t, week_data, label_fn=lambda i: _day_abbrs[i] if i < 7 else "")
-        extra = usage_history.get_max_extra_spend(email, _week_start(), now)
+        extra = usage_history.get_extra_spend_delta(email, _week_start(), now)
         if extra:
-            self._dim_label(t, f"Extra spend this week: {extra}")
+            self._extra_spend_label(t, "Extra spend this week: ", extra)
+        else:
+            self._dim_label(t, "No extra spending")
 
         self._separator(t)
 
@@ -239,9 +243,11 @@ class StatsPanel:
             t, month_data,
             label_fn=lambda i, d=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
         )
-        extra = usage_history.get_max_extra_spend(email, _month_start(), now)
+        extra = usage_history.get_extra_spend_current(email, _month_start(), now)
         if extra:
-            self._dim_label(t, f"Extra spend this month: {extra}")
+            self._extra_spend_label(t, "Extra spend this month: ", extra)
+        else:
+            self._dim_label(t, "No extra spending")
 
         self._separator(t)
 
@@ -283,6 +289,21 @@ class StatsPanel:
             font=t.font,
             anchor="w",
         ).pack(fill=tk.X, pady=(2, 0))
+
+    def _accent_label(self, t, text: str, parent=None) -> None:
+        tk.Label(
+            parent or self._content,
+            text=text,
+            bg=t.bg, fg=t.fg,
+            font=t.font_bold,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(2, 0))
+
+    def _extra_spend_label(self, t, label_text: str, value_text: str) -> None:
+        row = tk.Frame(self._content, bg=t.bg)
+        row.pack(fill=tk.X, pady=(2, 0))
+        tk.Label(row, text=label_text, bg=t.bg, fg=t.fg_dim, font=t.font, anchor="w").pack(side=tk.LEFT)
+        tk.Label(row, text=value_text, bg=t.bg, fg=t.fg, font=t.font_bold, anchor="w").pack(side=tk.LEFT)
 
     def _bar_chart(self, t, data: list[int], label_fn) -> None:
         n = len(data)

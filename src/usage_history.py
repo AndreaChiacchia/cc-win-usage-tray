@@ -9,6 +9,13 @@ from datetime import datetime, date
 
 import db
 
+_DOLLAR_RE = re.compile(r'\$([\d.]+)\s*/\s*\$([\d.]+)')
+
+
+def _parse_spend(s: str) -> tuple[float, float] | None:
+    m = _DOLLAR_RE.search(s)
+    return (float(m.group(1)), float(m.group(2))) if m else None
+
 
 def record_snapshot(email: str, sections: list) -> None:
     """Append a timestamped snapshot for *email* to the DB.
@@ -111,27 +118,89 @@ def get_daily_avg(email: str, start_date: date, days: int) -> list[int]:
     return result
 
 
-def get_max_extra_spend(email: str, start: datetime, end: datetime) -> str | None:
-    """Return the max observed Extra usage spent string in [start, end], e.g. '$3.50 / $5.00'."""
+def get_extra_spend_current(email: str, start: datetime, end: datetime) -> str | None:
+    """Return the latest Extra usage spent amount in [start, end], e.g. '$3.50'.
+
+    Used for 'This Month' where the cumulative total IS the monthly spend.
+    """
     conn = db.get_connection()
     rows = conn.execute(
         """SELECT spent FROM usage_snapshots
            WHERE email=? AND label='Extra usage'
-             AND ts >= ? AND ts <= ? AND spent IS NOT NULL""",
+             AND ts >= ? AND ts <= ? AND spent IS NOT NULL
+           ORDER BY ts DESC LIMIT 1""",
         (email, start.isoformat(), end.isoformat()),
     ).fetchall()
-    _dollar_re = re.compile(r'\$([\d.]+)\s*/\s*\$([\d.]+)')
-    max_val: float | None = None
-    cap_val: float | None = None
-    for (spent_str,) in rows:
-        m = _dollar_re.search(spent_str)
-        if m:
-            v, c = float(m.group(1)), float(m.group(2))
-            if max_val is None or v > max_val:
-                max_val, cap_val = v, c
-    if max_val is not None and cap_val is not None:
-        return f"${max_val:.2f} / ${cap_val:.2f}"
-    return None
+    if not rows:
+        return None
+    parsed = _parse_spend(rows[0][0])
+    if parsed is None:
+        return None
+    return f"${parsed[0]:.2f}"
+
+
+def get_extra_spend_delta(email: str, start: datetime, end: datetime) -> str | None:
+    """Return the Extra usage spend delta (end - start) in [start, end], e.g. '$1.20'.
+
+    Used for 'Today' and 'This Week' to show incremental spend over the period.
+    If the billing period reset mid-range (value drops), the last value is used directly.
+    Returns None when there is no spend or the delta is zero.
+    """
+    conn = db.get_connection()
+
+    # Baseline: latest snapshot strictly before start
+    baseline_row = conn.execute(
+        """SELECT spent FROM usage_snapshots
+           WHERE email=? AND label='Extra usage'
+             AND ts < ? AND spent IS NOT NULL
+           ORDER BY ts DESC LIMIT 1""",
+        (email, start.isoformat()),
+    ).fetchone()
+
+    # In-range snapshots ordered by time
+    in_range = conn.execute(
+        """SELECT spent FROM usage_snapshots
+           WHERE email=? AND label='Extra usage'
+             AND ts >= ? AND ts <= ? AND spent IS NOT NULL
+           ORDER BY ts""",
+        (email, start.isoformat(), end.isoformat()),
+    ).fetchall()
+
+    if not in_range:
+        return None
+
+    # Parse first and last in-range values
+    first_parsed = None
+    last_parsed = None
+    for (spent_str,) in in_range:
+        p = _parse_spend(spent_str)
+        if p is not None:
+            if first_parsed is None:
+                first_parsed = p
+            last_parsed = p
+
+    if last_parsed is None:
+        return None
+
+    last_val = last_parsed[0]
+
+    # Determine baseline value
+    if baseline_row is not None:
+        b = _parse_spend(baseline_row[0])
+        baseline_val = b[0] if b else (first_parsed[0] if first_parsed else 0.0)
+    else:
+        baseline_val = first_parsed[0] if first_parsed else 0.0
+
+    delta = last_val - baseline_val
+
+    # Billing reset mid-period: value dropped below baseline
+    if delta < 0:
+        delta = last_val
+
+    if delta <= 0:
+        return None
+
+    return f"${delta:.2f}"
 
 
 def get_peak_hour(email: str) -> int | None:

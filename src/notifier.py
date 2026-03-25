@@ -154,9 +154,9 @@ def _fire_notification(email: str, label: str, pct: int, threshold: int,
     """Send a Windows toast notification."""
     title_prefix = _LABEL_TO_TITLE.get(label, f"{label} at")
     if delta is not None and delta > 0:
-        pace_suffix = f" (under budget by {delta}%)"
+        pace_suffix = f" under budget -> {delta}%"
     elif delta is not None and delta < 0:
-        pace_suffix = f" (over budget by {abs(delta)}%)"
+        pace_suffix = f" over budget -> {abs(delta)}%"
     else:
         pace_suffix = ""
     toast = Notification(

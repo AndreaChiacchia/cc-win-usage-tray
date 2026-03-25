@@ -50,6 +50,12 @@ ANIM_FRAME_MS = 33            # ~30 FPS
 ANIM_BAR_DURATION_MS = 600    # fill transition duration (ms)
 ANIM_SHIMMER_WIDTH = 65       # shimmer band width (px)
 ANIM_SHIMMER_SPEED = 10       # shimmer pixels per frame
+ANIM_PACE_DURATION_MS = 400   # fade+count animation for pace label (ms)
+
+# Pace delta (burn rate indicator)
+PACE_DEAD_ZONE = 5            # hide delta when abs(delta) < 5%
+PACE_SESSION_WINDOW_H = 5     # session rate-limit window (hours)
+PACE_WEEK_WINDOW_H = 168      # weekly rate-limit window (7 days in hours)
 
 # Stats Panel
 STATS_PANEL_WIDTH = 700

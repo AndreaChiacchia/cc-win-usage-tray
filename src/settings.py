@@ -86,6 +86,17 @@ def set_shimmer_enabled(email: str, val: bool):
     save_settings(s)
 
 
+def get_pace_delta_enabled(email: str) -> bool:
+    s = load_settings()
+    return s.get(email, {}).get("pace_delta_enabled", True)
+
+
+def set_pace_delta_enabled(email: str, val: bool):
+    s = load_settings()
+    s.setdefault(email, {})["pace_delta_enabled"] = val
+    save_settings(s)
+
+
 def get_theme_name() -> str:
     s = load_settings()
     return s.get("_global", {}).get("theme", "Claude Code")

@@ -10,12 +10,13 @@ import settings as settings_mod
 import theme as theme_mod
 import time_utils
 from version import __version__
+import pace_delta as pace_delta_mod
 from config import (
     POPUP_WIDTH, POPUP_PADDING, TASKBAR_OFFSET,
     COLOR_GREEN_MAX, COLOR_YELLOW_MAX,
     BAR_HEIGHT, ANIM_FRAME_MS, ANIM_BAR_DURATION_MS,
     ANIM_SHIMMER_WIDTH, ANIM_SHIMMER_SPEED,
-    POPUP_MAX_CONTENT_HEIGHT,
+    ANIM_PACE_DURATION_MS, POPUP_MAX_CONTENT_HEIGHT,
 )
 from usage_parser import UsageSection, AccountUsage
 from stats_panel import StatsPanel
@@ -30,6 +31,13 @@ def _lighten_color(hex_color: str, factor: float = 0.3) -> str:
     g = int(g + (255 - g) * factor)
     b = int(b + (255 - b) * factor)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _blend_color(c1: str, c2: str, t: float) -> str:
+    """Linearly interpolate between two hex colors by factor t (0=c1, 1=c2)."""
+    r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+    r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
+    return f"#{int(r1+(r2-r1)*t):02x}{int(g1+(g2-g1)*t):02x}{int(b1+(b2-b1)*t):02x}"
 
 
 def _bar_color(percentage: int) -> str:
@@ -445,6 +453,18 @@ class UsagePopup:
                     else:
                         reset_lbl.configure(text="Usage data may be outdated")
 
+                # Update pace delta
+                if settings_mod.get_pace_delta_enabled(email):
+                    new_delta = pace_delta_mod.compute_pace_delta(
+                        section.label, section.percentage, section.reset_info
+                    )
+                else:
+                    new_delta = None
+                old_delta = refs.get("pace_delta")
+                if new_delta != old_delta:
+                    self._animate_pace_delta(key, old_delta, new_delta)
+                    refs["pace_delta"] = new_delta
+
                 # Extract old/new spent for animation
                 old_spent_info = refs.get("spent_info")
                 new_spent_info = section.spent_info
@@ -772,6 +792,56 @@ class UsagePopup:
         aid = self.root.after(0, _tick)
         self._anim_after_ids.append(aid)
 
+    def _animate_pace_delta(self, key: tuple, old_delta: int | None, new_delta: int | None):
+        """Animate a pace label transition (materialize, dissolve, count, crossfade)."""
+        start = time.monotonic()
+        gen = self._anim_generation
+        t = theme_mod.current()
+
+        disappearing = old_delta is not None and new_delta is None
+        duration = 0.300 if disappearing else ANIM_PACE_DURATION_MS / 1000.0
+
+        val_from = old_delta if old_delta is not None else 0
+        val_to = new_delta if new_delta is not None else 0
+        color_from = t.bar_green if (old_delta or 0) >= 0 else t.bar_red
+        color_to = t.bar_green if (new_delta or 0) >= 0 else t.bar_red
+        appearing = old_delta is None and new_delta is not None
+
+        def _tick():
+            if gen != self._anim_generation:
+                return
+            refs = self._bar_widgets.get(key)
+            if not refs:
+                return
+            pace_lbl = refs.get("pace_label")
+            if not pace_lbl or not pace_lbl.winfo_exists():
+                return
+
+            elapsed = time.monotonic() - start
+            raw_t = min(elapsed / duration, 1.0)
+            progress = 1.0 - (1.0 - raw_t) ** 2  # ease-out-quad
+
+            current = round(val_from + (val_to - val_from) * progress)
+            sign = "+" if current >= 0 else ""
+            pace_lbl.configure(text=f"[{sign}{current}%]")
+
+            if appearing:
+                fg = _blend_color(t.bg, color_to, progress)
+            elif disappearing:
+                fg = _blend_color(color_from, t.bg, progress)
+            else:
+                fg = _blend_color(color_from, color_to, progress)
+            pace_lbl.configure(fg=fg)
+
+            if raw_t < 1.0:
+                aid = self.root.after(ANIM_FRAME_MS, _tick)
+                self._anim_after_ids.append(aid)
+            elif disappearing:
+                pace_lbl.configure(text="")
+
+        aid = self.root.after(0, _tick)
+        self._anim_after_ids.append(aid)
+
     def _add_section(
         self,
         parent: tk.Frame,
@@ -786,19 +856,44 @@ class UsagePopup:
         frame = tk.Frame(parent, bg=t.bg, pady=0)
         frame.pack(fill=tk.X, pady=(top_pad, 0))
 
-        # Section label (includes spent_info for Extra usage)
+        # Section label row (label + pace delta side by side)
         label_base = section.label
         label_text = label_base
         if section.spent_info:
             label_text += f" · {section.spent_info}"
+        label_row = tk.Frame(frame, bg=t.bg)
+        label_row.pack(fill=tk.X)
         section_lbl = tk.Label(
-            frame,
+            label_row,
             text=label_text,
             bg=t.bg, fg=t.fg,
             font=t.font_bold,
             anchor="w",
         )
-        section_lbl.pack(fill=tk.X)
+        section_lbl.pack(side=tk.LEFT)
+
+        # Pace delta label
+        if settings_mod.get_pace_delta_enabled(email):
+            initial_delta = pace_delta_mod.compute_pace_delta(
+                section.label, section.percentage, section.reset_info
+            )
+        else:
+            initial_delta = None
+        if initial_delta is not None:
+            sign = "+" if initial_delta >= 0 else ""
+            pace_text = f"[{sign}{initial_delta}%]"
+            pace_fg = t.bar_green if initial_delta >= 0 else t.bar_red
+        else:
+            pace_text = ""
+            pace_fg = t.fg
+        pace_lbl = tk.Label(
+            label_row,
+            text=pace_text,
+            bg=t.bg, fg=pace_fg,
+            font=t.font_bold,
+            anchor="w",
+        )
+        pace_lbl.pack(side=tk.LEFT, padx=(6, 0))
 
         # Canvas progress bar + percentage
         bar_row = tk.Frame(frame, bg=t.bg)
@@ -879,6 +974,8 @@ class UsagePopup:
             "label_text": label_base,
             "spent_info": section.spent_info,
             "current_spent": current_spent,
+            "pace_label": pace_lbl,
+            "pace_delta": initial_delta,
         }
 
     # ------------------------------------------------------------------
@@ -1051,7 +1148,27 @@ class UsagePopup:
         )
         shimmer_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
 
-        self._position_beside_popup(win, 380, 280)
+        pace_var = tk.BooleanVar(value=settings_mod.get_pace_delta_enabled(email))
+
+        def _on_pace_toggle():
+            settings_mod.set_pace_delta_enabled(email, pace_var.get())
+            self._rebuild_content()
+
+        pace_cb = tk.Checkbutton(
+            inner,
+            text="Pace delta indicator",
+            variable=pace_var,
+            bg=t.bg, fg=t.fg,
+            selectcolor=t.bar_bg,
+            activebackground=t.bg, activeforeground=t.fg,
+            font=t.font,
+            anchor="w",
+            command=_on_pace_toggle,
+            **t.checkbutton_style_kwargs(),
+        )
+        pace_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
+
+        self._position_beside_popup(win, 380, 310)
         win.focus_force()
 
     def _open_threshold_settings(self, email: str, section_label: str):
@@ -1405,7 +1522,29 @@ class UsagePopup:
             return
         if any(settings_mod.get_relative_time_enabled(em) for em in self._last_accounts):
             self._refresh_sync_labels()
+        self._refresh_pace_deltas()
         self._start_relative_timer()
+
+    def _refresh_pace_deltas(self):
+        """Recompute pace deltas for all sections and animate any changes."""
+        if not self._last_accounts:
+            return
+        for email, acc in self._last_accounts.items():
+            for section in acc.usage.sections:
+                key = (email, section.label)
+                refs = self._bar_widgets.get(key)
+                if not refs:
+                    continue
+                if settings_mod.get_pace_delta_enabled(email):
+                    new_delta = pace_delta_mod.compute_pace_delta(
+                        section.label, section.percentage, section.reset_info
+                    )
+                else:
+                    new_delta = None
+                old_delta = refs.get("pace_delta")
+                if new_delta != old_delta:
+                    self._animate_pace_delta(key, old_delta, new_delta)
+                    refs["pace_delta"] = new_delta
 
     def _cancel_relative_timer(self):
         if self._relative_timer_id:

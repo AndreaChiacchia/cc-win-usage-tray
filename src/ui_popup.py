@@ -577,7 +577,7 @@ class UsagePopup:
             cog_acct.pack(side=tk.RIGHT)
             cog_acct.bind("<Button-1>", lambda e, em=email: self._open_account_settings(em))
 
-            if acc.usage.error:
+            if acc.usage.error and not acc.usage.sections:
                 tk.Label(
                     self._content_frame,
                     text=f"  Error: {acc.usage.error}",

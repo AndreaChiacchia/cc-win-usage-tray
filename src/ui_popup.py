@@ -66,6 +66,10 @@ class UsagePopup:
         self._anim_after_ids: list = []
         self._anim_generation = 0
         self._last_active_email: str | None = None
+        self._syncing_dot_active = False
+        self._syncing_dot_after_id = None
+        self._syncing_dot_phase = 0
+        self._last_refresh_error: str | None = None
 
         # Scroll state
         self._sb_hover = False
@@ -310,6 +314,7 @@ class UsagePopup:
 
     def _clear_content(self):
         self._stop_shimmer()
+        self._stop_syncing_dots()
         self._cancel_all_anims()
         self._bar_widgets.clear()
         self._sync_labels.clear()
@@ -332,12 +337,15 @@ class UsagePopup:
             self._refresh_btn.configure(state=tk.DISABLED)
             self._reposition_and_resize()
         else:
-            # Saved data exists — shimmer over existing bars
-            for lbl in self._sync_labels.values():
-                if lbl.winfo_exists():
-                    lbl.configure(text="  Refreshing...")
+            # Saved data exists — shimmer or dots depending on per-account setting
             self._refresh_btn.configure(state=tk.DISABLED)
-            self._start_shimmer()
+            if self._last_active_email and settings_mod.get_shimmer_enabled(self._last_active_email):
+                for lbl in self._sync_labels.values():
+                    if lbl.winfo_exists():
+                        lbl.configure(text="  Syncing...")
+                self._start_shimmer()
+            else:
+                self._start_syncing_dots()
 
     def show_error(self, message: str):
         """Display an error message."""
@@ -369,6 +377,7 @@ class UsagePopup:
         """Display parsed usage data. Updates in-place if structure matches, else full rebuild."""
         self._last_accounts = accounts
         self._stop_shimmer()
+        self._stop_syncing_dots()
         self._cancel_all_anims()
 
         if not accounts:
@@ -410,6 +419,8 @@ class UsagePopup:
                         ts_text = f"  Last sync: {dt.strftime('%Y-%m-%d %H:%M:%S')}"
                     except Exception:
                         ts_text = f"  Last sync: {acc.last_updated}"
+                if self._last_refresh_error:
+                    ts_text += "  \u26a0"
                 self._sync_labels[email].configure(text=ts_text)
 
             for section in acc.usage.sections:
@@ -521,6 +532,8 @@ class UsagePopup:
                 except Exception:
                     ts_str = acc.last_updated
                 ts_label = f"  Last sync: {ts_str}"
+            if self._last_refresh_error:
+                ts_label += "  \u26a0"
 
             sync_row = tk.Frame(self._content_frame, bg=t.bg)
             sync_row.pack(fill=tk.X)
@@ -640,6 +653,32 @@ class UsagePopup:
         # Redraw bars at current static state
         for key in self._bar_widgets:
             self._redraw_bar_static(key)
+
+    def _start_syncing_dots(self):
+        if self._syncing_dot_active:
+            return
+        self._syncing_dot_phase = 0
+        self._syncing_dot_active = True
+        self._tick_syncing_dots()
+
+    def _tick_syncing_dots(self):
+        if not self._syncing_dot_active:
+            return
+        text = "  Syncing" + "." * (self._syncing_dot_phase + 1)
+        for lbl in self._sync_labels.values():
+            if lbl.winfo_exists():
+                lbl.configure(text=text)
+        self._syncing_dot_phase = (self._syncing_dot_phase + 1) % 3
+        self._syncing_dot_after_id = self.root.after(400, self._tick_syncing_dots)
+
+    def _stop_syncing_dots(self):
+        self._syncing_dot_active = False
+        if self._syncing_dot_after_id is not None:
+            try:
+                self.root.after_cancel(self._syncing_dot_after_id)
+            except Exception:
+                pass
+            self._syncing_dot_after_id = None
 
     # ------------------------------------------------------------------
     # Bar fill animation
@@ -896,12 +935,18 @@ class UsagePopup:
 
         return win, inner, _close
 
-    def _center_window(self, win: tk.Toplevel, w: int, h: int):
+    def _position_beside_popup(self, win: tk.Toplevel, w: int, h: int):
         win.update_idletasks()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        x = (sw - w) // 2
-        y = (sh - h) // 2
+        popup_x = self.win.winfo_x()
+        popup_y = self.win.winfo_y()
+
+        x = popup_x - w - 4
+        if x < 0:
+            x = popup_x + self.win.winfo_width() + 4
+
+        screen_h = self.root.winfo_screenheight()
+        y = max(0, min(popup_y, screen_h - h))
+
         win.geometry(f"{w}x{h}+{x}+{y}")
 
     def _open_account_settings(self, email: str):
@@ -991,7 +1036,22 @@ class UsagePopup:
         )
         rel_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
 
-        self._center_window(win, 380, 260)
+        shimmer_var = tk.BooleanVar(value=settings_mod.get_shimmer_enabled(email))
+        shimmer_cb = tk.Checkbutton(
+            inner,
+            text="Shimmer animation",
+            variable=shimmer_var,
+            bg=t.bg, fg=t.fg,
+            selectcolor=t.bar_bg,
+            activebackground=t.bg, activeforeground=t.fg,
+            font=t.font,
+            anchor="w",
+            command=lambda: settings_mod.set_shimmer_enabled(email, shimmer_var.get()),
+            **t.checkbutton_style_kwargs(),
+        )
+        shimmer_cb.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
+
+        self._position_beside_popup(win, 380, 280)
         win.focus_force()
 
     def _open_threshold_settings(self, email: str, section_label: str):
@@ -1041,7 +1101,7 @@ class UsagePopup:
         scale.set(current_val)
         scale.pack(fill=tk.X)
 
-        self._center_window(win, 380, 180)
+        self._position_beside_popup(win, 380, 180)
         win.focus_force()
 
     def _open_theme_selector(self):
@@ -1279,7 +1339,7 @@ class UsagePopup:
             _close_with_unbind()
 
         win_h = scroll_height + POPUP_PADDING * 4 + 60
-        self._center_window(win, CARD_W + POPUP_PADDING * 2 + 20, win_h)
+        self._position_beside_popup(win, CARD_W + POPUP_PADDING * 2 + 20, win_h)
         win.focus_force()
 
     def _rebuild_content(self):
@@ -1303,13 +1363,16 @@ class UsagePopup:
             lbl = self._sync_labels.get(email)
             if lbl and lbl.winfo_exists():
                 if settings_mod.get_relative_time_enabled(email):
-                    lbl.configure(text=f"  {time_utils.format_last_sync_relative(acc.last_updated)}")
+                    ts = f"  {time_utils.format_last_sync_relative(acc.last_updated)}"
                 else:
                     try:
                         dt = datetime.fromisoformat(acc.last_updated)
-                        lbl.configure(text=f"  Last sync: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                        ts = f"  Last sync: {dt.strftime('%Y-%m-%d %H:%M:%S')}"
                     except Exception:
-                        lbl.configure(text=f"  Last sync: {acc.last_updated}")
+                        ts = f"  Last sync: {acc.last_updated}"
+                if self._last_refresh_error:
+                    ts += "  \u26a0"
+                lbl.configure(text=ts)
 
     def _tick_relative(self):
         if not self._visible or self._last_accounts is None:
@@ -1400,13 +1463,17 @@ class UsagePopup:
         self._refresh_sync_labels()
         self._start_relative_timer()
         self._start_screen_check()
-        # If a refresh is in progress and bars exist, start shimmer
-        if self._refreshing and self._bar_widgets and not self._shimmer_active:
-            for lbl in self._sync_labels.values():
-                if lbl.winfo_exists():
-                    lbl.configure(text="  Refreshing...")
+        # If a refresh is in progress and bars exist, start shimmer or dots
+        if self._refreshing and self._bar_widgets:
             self._refresh_btn.configure(state=tk.DISABLED)
-            self._start_shimmer()
+            if self._last_active_email and settings_mod.get_shimmer_enabled(self._last_active_email):
+                if not self._shimmer_active:
+                    for lbl in self._sync_labels.values():
+                        if lbl.winfo_exists():
+                            lbl.configure(text="  Syncing...")
+                    self._start_shimmer()
+            elif not self._syncing_dot_active:
+                self._start_syncing_dots()
 
     def hide(self):
         self.win.withdraw()

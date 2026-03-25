@@ -174,6 +174,7 @@ class ClaudeUsageTray:
         except Exception: pass
 
         try:
+            self.popup._last_refresh_error = None
             email = parse_email(status_text)
             if not email:
                 self._on_usage_error("Could not identify account from /status output")
@@ -239,6 +240,7 @@ class ClaudeUsageTray:
             else:
                 if _apply_expired_resets(all_accounts):
                     storage.save_all_accounts(all_accounts)
+                self.popup._last_refresh_error = message
             self.root.after(0, lambda: self._apply_data(all_accounts))
         except Exception as e:
             print(f"Error in _on_usage_error: {e}")

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Backlog
 
-Planned features, fixes, and future improvements are tracked in [`BACKLOG.md`](BACKLOG.md) at the repo root. Consult it when picking up new work or when the user asks about planned changes.
+Planned features, fixes, and future improvements are tracked in [`BACKLOG.md`](BACKLOG.md) at the repo root. Consult it when picking up new work or when the user asks about planned changes. Keep the file updated, when a task present in the file is completed, remove it.
 
 ---
 

@@ -2,7 +2,7 @@
 
 A Windows system tray application that monitors [Claude Code](https://claude.ai/code) usage in real time — session, weekly, and extra tokens — with a dark-themed popup, color-coded progress bars, and Windows toast notifications.
 
-![version](https://img.shields.io/badge/version-v1.6.0-blue)
+![version](https://img.shields.io/badge/version-v1.7.0-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
@@ -15,14 +15,14 @@ A Windows system tray application that monitors [Claude Code](https://claude.ai/
 
 - **System tray icon** — dynamic states (normal / loading / error), right-click menu, tooltip showing live usage percentages
 - **Dark-themed popup** — terminal aesthetic, Consolas font, positioned just above the taskbar, auto-dismisses on focus loss, includes a close button
-- **Color-coded progress bars** — green (< 50 %), yellow (50–79 %), red (≥ 80 %) with smooth animated fills, shimmer refresh effect, and inline animated spent amount
+- **Color-coded progress bars** — green (< 50 %), yellow (50–79 %), red (≥ 80 %) with smooth animated fills, toggleable shimmer refresh effect, syncing dots indicator, and inline animated spent amount
 - **Draggable popup** — drag the title bar to reposition anywhere (including across monitors); position persists across restarts; falls back to bottom-right corner
 - **Always-on-top toggle** — tray menu checkbox (default: on) to control whether the popup stays above other windows; persists across restarts
 - **Theming system** — built-in themes selectable from the tray menu
 - **Multi-account support** — tracks all accounts simultaneously; the active account is shown first, historical data is preserved across refreshes
 - **Relative / cooldown time display** — per-account toggle to switch between absolute and relative time remaining
-- **Windows toast notifications** — fired when usage crosses configurable threshold boundaries, with per-account toggle and per-section step (default 10 %)
-- **Stats panel** — historical usage charts (hourly today, daily this week Mon–Sun, daily this month) with color-coded bars and extra-spend summaries
+- **Windows toast notifications** — fired when usage crosses configurable threshold boundaries, with per-account toggle, per-section step (default 10 %), and per-account pace delta suffix showing rate of change
+- **Stats panel** — historical usage charts (hourly today, daily this week Mon–Sun, daily this month) with color-coded bars, extra-spend summaries, and animated open (slide+fade) / close transitions
 - **Per-account settings** — refresh interval (1–30 min), notification threshold, notifications on/off
 - **PTY-based CLI integration** — a state machine handles the Claude CLI banner, the first-run trust dialog, `/status`, and `/usage` commands automatically
 

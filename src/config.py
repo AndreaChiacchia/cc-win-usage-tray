@@ -57,6 +57,9 @@ STATS_BAR_MAX_HEIGHT = 120
 STATS_BAR_MIN_HEIGHT = 2
 STATS_CHART_HEIGHT = 150
 STATS_PIN_DURATION_MS = 2000  # ms hovering before panel becomes pinned
+STATS_OPEN_DURATION_MS = 220   # slide+fade open animation (ms)
+STATS_OPEN_SLIDE_PX = 24       # horizontal slide distance (px)
+STATS_CLOSE_DURATION_MS = 160  # fade-out close animation (ms, ~75% of open)
 
 # Scrollable popup content area
 POPUP_MAX_CONTENT_HEIGHT = 680  # fits 2 accounts × 3 sections (~669 px); scrollbar only for 3+ accounts

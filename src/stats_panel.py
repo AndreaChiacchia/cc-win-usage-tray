@@ -21,9 +21,11 @@ from datetime import datetime, timedelta
 import theme as theme_mod
 import usage_history
 from config import (
+    ANIM_FRAME_MS,
     COLOR_GREEN_MAX, COLOR_YELLOW_MAX,
     STATS_PANEL_WIDTH, STATS_BAR_MAX_HEIGHT, STATS_BAR_MIN_HEIGHT,
     STATS_CHART_HEIGHT, STATS_PIN_DURATION_MS,
+    STATS_OPEN_DURATION_MS, STATS_OPEN_SLIDE_PX, STATS_CLOSE_DURATION_MS,
 )
 
 
@@ -83,6 +85,17 @@ class StatsPanel:
         self._pin_anim_id: str | None = None
         self._pin_start_time: float | None = None
 
+        # Open animation state
+        self._open_anim_id: str | None = None
+        self._open_anim_start: float | None = None
+        self._open_final_x: int | None = None
+        self._open_final_y: int | None = None
+        self._open_slide_sign: int = 1  # +1 = panel left of popup (slides left), -1 = right (slides right)
+
+        # Close animation state
+        self._close_anim_id: str | None = None
+        self._close_anim_start: float | None = None
+
         t = theme_mod.current()
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
@@ -113,6 +126,9 @@ class StatsPanel:
 
     def show(self, email: str, sections: list) -> None:
         """Show (or update) the panel for *email*. Called on hover-enter."""
+        currently_closing = self._close_anim_start is not None
+        self._cancel_close_animation()
+        already_visible = self._state != self._HIDDEN or currently_closing
         was_pinned = self._state == self._PINNED
         self._current_email = email
         self._current_sections = sections
@@ -121,8 +137,12 @@ class StatsPanel:
             self._state = self._PREVIEWING
 
         self._rebuild_content()
-        self._position_panel()
-        self.win.deiconify()
+
+        if already_visible:
+            self._position_panel()
+            self.win.attributes("-alpha", 1.0)
+        else:
+            self._start_open_animation()
 
         if not was_pinned:
             self._start_pin_animation()
@@ -131,16 +151,18 @@ class StatsPanel:
         """Hide the panel unless it is pinned."""
         if self._state == self._PINNED:
             return
+        self._cancel_open_animation()
         self._cancel_pin_animation()
         self._state = self._HIDDEN
-        self.win.withdraw()
+        self._start_close_animation()
 
     def force_hide(self) -> None:
         """Force-hide regardless of pin state (e.g. when popup closes)."""
+        self._cancel_open_animation()
         self._cancel_pin_animation()
         self._state = self._HIDDEN
         self._current_email = None
-        self.win.withdraw()
+        self._start_close_animation()
 
     def apply_theme(self) -> None:
         """Reapply current theme colours to all widgets."""
@@ -413,3 +435,117 @@ class StatsPanel:
                 pass
             self._pin_anim_id = None
         self._pin_start_time = None
+
+    # ------------------------------------------------------------------
+    # Open animation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _ease_out_quad(t: float) -> float:
+        return 1.0 - (1.0 - t) ** 2
+
+    def _cancel_open_animation(self) -> None:
+        if self._open_anim_id is not None:
+            try:
+                self.root.after_cancel(self._open_anim_id)
+            except Exception:
+                pass
+            self._open_anim_id = None
+        self._open_anim_start = None
+
+    def _start_open_animation(self) -> None:
+        self._cancel_open_animation()
+
+        self.win.update_idletasks()
+        panel_w = STATS_PANEL_WIDTH
+        panel_h = self.win.winfo_reqheight()
+
+        popup_x = self._popup_win.winfo_x()
+        popup_y = self._popup_win.winfo_y()
+
+        x = popup_x - panel_w - 4
+        if x < 0:
+            x = popup_x + self._popup_win.winfo_width() + 4
+            self._open_slide_sign = -1  # panel right of popup; starts left, slides right
+        else:
+            self._open_slide_sign = 1   # panel left of popup; starts right, slides left
+
+        screen_h = self.root.winfo_screenheight()
+        y = max(0, min(popup_y, screen_h - panel_h))
+
+        self._open_final_x = x
+        self._open_final_y = y
+
+        # Start position: shifted toward the popup by STATS_OPEN_SLIDE_PX
+        start_x = x + self._open_slide_sign * STATS_OPEN_SLIDE_PX
+        self.win.geometry(f"{panel_w}x{panel_h}+{start_x}+{y}")
+        self.win.attributes("-alpha", 0.0)
+        self.win.deiconify()
+
+        self._open_anim_start = time.monotonic()
+        self._tick_open_animation()
+
+    def _tick_open_animation(self) -> None:
+        if self._open_anim_start is None:
+            return
+
+        elapsed_ms = (time.monotonic() - self._open_anim_start) * 1000
+        t = min(elapsed_ms / STATS_OPEN_DURATION_MS, 1.0)
+        progress = self._ease_out_quad(t)
+
+        final_x = self._open_final_x
+        final_y = self._open_final_y
+        start_x = final_x + self._open_slide_sign * STATS_OPEN_SLIDE_PX
+
+        current_x = int(start_x + (final_x - start_x) * progress)
+        panel_w = STATS_PANEL_WIDTH
+        panel_h = self.win.winfo_reqheight()
+
+        self.win.geometry(f"{panel_w}x{panel_h}+{current_x}+{final_y}")
+        self.win.attributes("-alpha", progress)
+
+        if t >= 1.0:
+            self.win.geometry(f"{panel_w}x{panel_h}+{final_x}+{final_y}")
+            self.win.attributes("-alpha", 1.0)
+            self._open_anim_id = None
+            self._open_anim_start = None
+        else:
+            self._open_anim_id = self.root.after(ANIM_FRAME_MS, self._tick_open_animation)
+
+    # ------------------------------------------------------------------
+    # Close animation
+    # ------------------------------------------------------------------
+
+    def _cancel_close_animation(self) -> None:
+        if self._close_anim_id is not None:
+            try:
+                self.root.after_cancel(self._close_anim_id)
+            except Exception:
+                pass
+            self._close_anim_id = None
+        self._close_anim_start = None
+
+    def _start_close_animation(self) -> None:
+        self._cancel_close_animation()
+        if not self.win.winfo_viewable():
+            self.win.attributes("-alpha", 1.0)
+            self.win.withdraw()
+            return
+        self._close_anim_start = time.monotonic()
+        self._tick_close_animation()
+
+    def _tick_close_animation(self) -> None:
+        if self._close_anim_start is None:
+            return
+        elapsed_ms = (time.monotonic() - self._close_anim_start) * 1000
+        t = min(elapsed_ms / STATS_CLOSE_DURATION_MS, 1.0)
+        # ease-in: (1-t)² — starts at 1, curves quickly to 0
+        alpha = (1.0 - t) ** 2
+        self.win.attributes("-alpha", alpha)
+        if t >= 1.0:
+            self.win.attributes("-alpha", 1.0)  # reset for next open
+            self._close_anim_id = None
+            self._close_anim_start = None
+            self.win.withdraw()
+        else:
+            self._close_anim_id = self.root.after(ANIM_FRAME_MS, self._tick_close_animation)

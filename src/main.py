@@ -8,6 +8,8 @@ import pystray
 
 from datetime import datetime
 
+import db  # initialise DB (and run JSON migration) before anything else touches storage
+
 from claude_runner import run_usage_threaded
 from time_utils import parse_reset_datetime
 from usage_parser import parse_usage, parse_email, UsageData, AccountUsage

@@ -18,6 +18,7 @@ os.makedirs(CUSTOM_THEMES_DIR, exist_ok=True)
 SETTINGS_FILE = os.path.join(APP_DATA_DIR, "user_settings.json")
 STORAGE_FILE = os.path.join(APP_DATA_DIR, "accounts_usage.json")
 HISTORY_FILE = os.path.join(APP_DATA_DIR, "usage_history.json")
+DB_FILE = os.path.join(APP_DATA_DIR, "usage.db")
 DEBUG_LOG_FILE = os.path.join(APP_LOGS_DIR, "usage_output_debug.txt")
 NOTIFIER_LOG_FILE = os.path.join(APP_LOGS_DIR, "notifier_debug.log")
 

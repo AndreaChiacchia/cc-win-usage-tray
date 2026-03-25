@@ -14,7 +14,6 @@ pinned      Bar completed; panel stays open regardless of mouse position.
 """
 
 import calendar
-import re
 import time
 import tkinter as tk
 from datetime import datetime, timedelta
@@ -209,13 +208,13 @@ class StatsPanel:
         if email is None:
             return
 
-        history = usage_history.get_history(email)
+        now = _now()
 
         # --- Today ---
         self._section_title(t, "Today")
-        today_data = self._aggregate_hourly(history)
+        today_data = usage_history.get_hourly_avg(email, now.date())
         self._bar_chart(t, today_data, label_fn=lambda i: str(i) if i % 3 == 0 else "")
-        extra = self._extra_spend_in_range(history, _today_start(), _now())
+        extra = usage_history.get_max_extra_spend(email, _today_start(), now)
         if extra:
             self._dim_label(t, f"Extra spend today: {extra}")
 
@@ -224,10 +223,9 @@ class StatsPanel:
         # --- This Week ---
         self._section_title(t, "This Week")
         _day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        week_data = self._aggregate_daily(history, days=7, from_week_start=True)
-        week_labels = _day_abbrs  # always Mon–Sun
-        self._bar_chart(t, week_data, label_fn=lambda i, wl=week_labels: wl[i] if i < len(wl) else "")
-        extra = self._extra_spend_in_range(history, _week_start(), _now())
+        week_data = usage_history.get_daily_avg(email, _week_start().date(), 7)
+        self._bar_chart(t, week_data, label_fn=lambda i: _day_abbrs[i] if i < 7 else "")
+        extra = usage_history.get_max_extra_spend(email, _week_start(), now)
         if extra:
             self._dim_label(t, f"Extra spend this week: {extra}")
 
@@ -235,14 +233,13 @@ class StatsPanel:
 
         # --- This Month ---
         self._section_title(t, "This Month")
-        now = datetime.now()
         days_in_month = calendar.monthrange(now.year, now.month)[1]
-        month_data = self._aggregate_daily(history, days=days_in_month, from_month_start=True)
+        month_data = usage_history.get_daily_avg(email, _month_start().date(), days_in_month)
         self._bar_chart(
             t, month_data,
             label_fn=lambda i, d=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
         )
-        extra = self._extra_spend_in_range(history, _month_start(), _now())
+        extra = usage_history.get_max_extra_spend(email, _month_start(), now)
         if extra:
             self._dim_label(t, f"Extra spend this month: {extra}")
 
@@ -252,11 +249,11 @@ class StatsPanel:
         stats = tk.Frame(self._content, bg=t.bg)
         stats.pack(fill=tk.X, pady=(4, 0))
 
-        peak = self._peak_hour(history)
+        peak = usage_history.get_peak_hour(email)
         if peak is not None:
             self._dim_label(t, f"Peak usage time: {peak:02d}:00 – {(peak + 1) % 24:02d}:00", parent=stats)
 
-        avg_max = self._avg_daily_max(history)
+        avg_max = usage_history.get_avg_daily_max(email)
         if avg_max is not None:
             self._dim_label(t, f"Avg daily max: {avg_max:.0f}%", parent=stats)
 
@@ -343,114 +340,6 @@ class StatsPanel:
 
         canvas.bind("<Configure>", _draw)
         self.root.after(10, _draw)
-
-    # ------------------------------------------------------------------
-    # Data aggregation
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _max_pct(entry: dict) -> int:
-        secs = entry.get("sections", {})
-        if not secs:
-            return 0
-        return max(v.get("pct", 0) for v in secs.values())
-
-    def _aggregate_hourly(self, history: list) -> list[int]:
-        """24-element list: avg % per hour for today."""
-        buckets: list[list[int]] = [[] for _ in range(24)]
-        today = datetime.now().date()
-        for entry in history:
-            try:
-                ts = datetime.fromisoformat(entry["ts"])
-            except Exception:
-                continue
-            if ts.date() != today:
-                continue
-            buckets[ts.hour].append(self._max_pct(entry))
-        return [int(sum(b) / len(b)) if b else 0 for b in buckets]
-
-    def _aggregate_daily(
-        self, history: list, days: int,
-        from_month_start: bool = False, from_week_start: bool = False
-    ) -> list[int]:
-        """*days*-element list: avg % per day, oldest-first."""
-        now = datetime.now()
-        if from_month_start:
-            start_date = now.date().replace(day=1)
-        elif from_week_start:
-            start_date = _week_start().date()
-        else:
-            start_date = (now - timedelta(days=days - 1)).date()
-
-        buckets: dict[int, list[int]] = {}
-        for entry in history:
-            try:
-                ts = datetime.fromisoformat(entry["ts"])
-            except Exception:
-                continue
-            day_idx = (ts.date() - start_date).days
-            if day_idx < 0 or day_idx >= days:
-                continue
-            buckets.setdefault(day_idx, []).append(self._max_pct(entry))
-
-        return [
-            int(sum(buckets[i]) / len(buckets[i])) if i in buckets else 0
-            for i in range(days)
-        ]
-
-    def _extra_spend_in_range(
-        self, history: list, start: datetime, end: datetime
-    ) -> str | None:
-        """Return the max observed Extra usage spent string in the range."""
-        max_val: float | None = None
-        cap_val: float | None = None
-        for entry in history:
-            try:
-                ts = datetime.fromisoformat(entry["ts"])
-            except Exception:
-                continue
-            if ts < start or ts > end:
-                continue
-            spent_str = entry.get("sections", {}).get("Extra usage", {}).get("spent")
-            if not spent_str:
-                continue
-            m = re.search(r'\$([\d.]+)\s*/\s*\$([\d.]+)', spent_str)
-            if m:
-                v, c = float(m.group(1)), float(m.group(2))
-                if max_val is None or v > max_val:
-                    max_val, cap_val = v, c
-        if max_val is not None and cap_val is not None:
-            return f"${max_val:.2f} / ${cap_val:.2f}"
-        return None
-
-    def _peak_hour(self, history: list) -> int | None:
-        buckets: list[list[int]] = [[] for _ in range(24)]
-        for entry in history:
-            try:
-                ts = datetime.fromisoformat(entry["ts"])
-            except Exception:
-                continue
-            pct = self._max_pct(entry)
-            if pct > 0:
-                buckets[ts.hour].append(pct)
-        avgs = [sum(b) / len(b) if b else 0 for b in buckets]
-        best = max(range(24), key=lambda i: avgs[i])
-        return best if avgs[best] > 0 else None
-
-    def _avg_daily_max(self, history: list) -> float | None:
-        daily_max: dict[str, int] = {}
-        for entry in history:
-            try:
-                ts = datetime.fromisoformat(entry["ts"])
-            except Exception:
-                continue
-            pct = self._max_pct(entry)
-            key = ts.date().isoformat()
-            if key not in daily_max or pct > daily_max[key]:
-                daily_max[key] = pct
-        if not daily_max:
-            return None
-        return sum(daily_max.values()) / len(daily_max)
 
     # ------------------------------------------------------------------
     # Pin animation

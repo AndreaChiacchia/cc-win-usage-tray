@@ -1318,7 +1318,7 @@ class UsagePopup:
                 break
 
         # Apply button
-        tk.Button(
+        apply_btn = tk.Button(
             inner,
             text="Apply",
             bg=t.button_bg, fg=t.button_fg,
@@ -1328,7 +1328,8 @@ class UsagePopup:
             cursor="hand2",
             command=lambda: _apply(),
             **t.button_style_kwargs(),
-        ).pack(side=tk.RIGHT)
+        )
+        apply_btn.pack(side=tk.RIGHT)
 
         def _apply():
             name = selected_var.get()
@@ -1336,7 +1337,32 @@ class UsagePopup:
             settings_mod.set_theme_name(name)
             self.apply_theme()
             self._rebuild_content()
-            _close_with_unbind()
+
+            # Re-theme the selector window itself
+            new_t = theme_mod.current()
+            outer = win.winfo_children()[0]
+            win.configure(bg=new_t.bg)
+            outer.configure(bg=new_t.border)
+            inner.configure(bg=new_t.bg)
+            title_bar.configure(bg=new_t.bg)
+            for child in title_bar.winfo_children():
+                if isinstance(child, tk.Label):
+                    child.configure(bg=new_t.bg, fg=new_t.fg, font=new_t.font_bold)
+                elif isinstance(child, tk.Button):
+                    child.configure(bg=new_t.button_bg, fg=new_t.button_fg,
+                                    activebackground=new_t.button_active_bg,
+                                    activeforeground=new_t.button_fg, font=new_t.font)
+            scroll_wrapper.configure(bg=new_t.bg)
+            scroll_canvas.configure(bg=new_t.bg)
+            sb_canvas.configure(bg=new_t.bar_bg)
+            list_frame.configure(bg=new_t.bg)
+            apply_btn.configure(bg=new_t.button_bg, fg=new_t.button_fg,
+                                activebackground=new_t.button_active_bg,
+                                activeforeground=new_t.button_fg, font=new_t.font)
+
+            # Redraw all preview cards (checkmark updates for the new active theme)
+            for n, c in card_canvases.items():
+                _draw_card(c, themes_dict[n], n == name, is_custom_dict[n])
 
         win_h = scroll_height + POPUP_PADDING * 4 + 60
         self._position_beside_popup(win, CARD_W + POPUP_PADDING * 2 + 20, win_h)

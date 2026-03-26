@@ -46,6 +46,26 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS token_entries (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                  TEXT    NOT NULL,
+    input_tokens        INTEGER DEFAULT 0,
+    output_tokens       INTEGER DEFAULT 0,
+    cache_read_tokens   INTEGER DEFAULT 0,
+    cache_creation_tokens INTEGER DEFAULT 0,
+    source_file         TEXT    NOT NULL,
+    email               TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_token_entries_ts ON token_entries(ts);
+
+CREATE TABLE IF NOT EXISTS jsonl_processed (
+    path        TEXT PRIMARY KEY,
+    mtime       REAL NOT NULL,
+    file_size   INTEGER NOT NULL,
+    last_offset INTEGER NOT NULL DEFAULT 0,
+    email       TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -70,7 +90,62 @@ def _open() -> sqlite3.Connection:
     if is_new:
         _migrate_from_json(conn)
 
+    _apply_migrations(conn)
+
     return conn
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    """Apply incremental schema migrations. Safe to call on every open."""
+    row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+    version = int(row[0]) if row else 0
+
+    if version < 2:
+        # v1→v2: token_entries and jsonl_processed tables (created by _SCHEMA above via IF NOT EXISTS)
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '2')")
+        conn.commit()
+
+    if version < 3:
+        # v2→v3: add last_offset column to jsonl_processed for append-only seek
+        try:
+            conn.execute("ALTER TABLE jsonl_processed ADD COLUMN last_offset INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # column already exists (new DB created from updated _SCHEMA)
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '3')")
+        conn.commit()
+
+    if version < 4:
+        # v3→v4: add email column to token_entries for per-account filtering;
+        # clear all existing untagged rows and reset scan state so files are re-processed
+        # with the correct email at next startup scan.
+        try:
+            conn.execute("ALTER TABLE token_entries ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass  # column already exists on newly-created DBs
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_token_entries_email ON token_entries(email)")
+        except Exception:
+            pass
+        conn.execute("DELETE FROM token_entries")
+        conn.execute("DELETE FROM jsonl_processed")
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '4')")
+        conn.commit()
+
+    if version < 5:
+        try:
+            conn.execute("ALTER TABLE jsonl_processed ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass  # column already exists on newly-created DBs
+        conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', '5')")
+        conn.commit()
+
+    # One-time fix: clear token_entries stored with UTC timestamps (pre-timezone-fix).
+    # jsonl_processed is kept intact so old files are not re-scanned (they have no account
+    # identifier and would be attributed to the current account incorrectly).
+    if not conn.execute("SELECT 1 FROM meta WHERE key='token_tz_migrated'").fetchone():
+        conn.execute("DELETE FROM token_entries")
+        conn.execute("INSERT INTO meta(key, value) VALUES('token_tz_migrated', '1')")
+        conn.commit()
 
 
 def _migrate_from_json(conn: sqlite3.Connection) -> None:

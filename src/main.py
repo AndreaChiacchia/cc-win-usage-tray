@@ -16,6 +16,7 @@ from usage_parser import parse_usage, parse_email, UsageData, AccountUsage
 import paths
 import storage
 import usage_history
+import token_history
 import settings as settings_mod
 from startup import is_startup_enabled, set_startup_enabled
 from ui_popup import UsagePopup
@@ -216,6 +217,7 @@ class ClaudeUsageTray:
                 acc.is_active = (email_key == email)
             storage.save_all_accounts(all_accounts)
             usage_history.record_snapshot(email, usage_data.sections)
+            token_history.scan_blocking(email)
 
             # Check thresholds and notify
             from notifier import check_and_notify

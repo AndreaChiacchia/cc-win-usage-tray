@@ -69,3 +69,7 @@ STATS_CLOSE_DURATION_MS = 160  # fade-out close animation (ms, ~75% of open)
 
 # Scrollable popup content area
 POPUP_MAX_CONTENT_HEIGHT = 680  # fits 2 accounts × 3 sections (~669 px); scrollbar only for 3+ accounts
+
+# Token detail panel
+CLAUDE_DATA_DIR = "~/.claude"   # base dir for Claude Code session data
+TOKEN_PANEL_WIDTH = 280         # width of the token detail panel (px)

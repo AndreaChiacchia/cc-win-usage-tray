@@ -19,6 +19,7 @@ import tkinter as tk
 from datetime import datetime, timedelta
 
 import theme as theme_mod
+import token_history
 import usage_history
 from config import (
     ANIM_FRAME_MS,
@@ -27,6 +28,7 @@ from config import (
     STATS_CHART_HEIGHT, STATS_PIN_DURATION_MS,
     STATS_OPEN_DURATION_MS, STATS_OPEN_SLIDE_PX, STATS_CLOSE_DURATION_MS,
 )
+from token_detail_panel import TokenDetailPanel
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +123,9 @@ class StatsPanel:
         self._content = tk.Frame(self._inner, bg=t.bg, padx=16, pady=16)
         self._content.pack(fill=tk.BOTH, expand=True)
 
+        # Token detail panel (shown on bar hover)
+        self._token_panel = TokenDetailPanel(root, self.win)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -164,6 +169,7 @@ class StatsPanel:
         self._state = self._HIDDEN
         self._current_email = None
         self._start_close_animation()
+        self._token_panel.force_hide()
 
     def apply_theme(self) -> None:
         """Reapply current theme colours to all widgets."""
@@ -173,6 +179,7 @@ class StatsPanel:
         self._inner.configure(bg=t.bg)
         self._pin_canvas.configure(bg=t.bg)
         self._content.configure(bg=t.bg)
+        self._token_panel.apply_theme()
         if self._state != self._HIDDEN:
             self._rebuild_content()
 
@@ -233,10 +240,26 @@ class StatsPanel:
 
         now = _now()
 
+        # --- Pre-fetch token data for hover panels ---
+        token_history.scan_blocking(email)
+        hourly_tokens = token_history.get_hourly_tokens(now.date(), email)
+        week_tokens = token_history.get_daily_tokens(_week_start().date(), 7, email)
+        days_in_month = calendar.monthrange(now.year, now.month)[1]
+        month_tokens = token_history.get_daily_tokens(_month_start().date(), days_in_month, email)
+
         # --- Today ---
         self._section_title(t, "Today")
         today_data = usage_history.get_hourly_avg(email, now.date())
-        self._bar_chart(t, today_data, label_fn=lambda i: str(i) if i % 3 == 0 else "")
+
+        def _today_hover(i: int) -> dict:
+            d = hourly_tokens[i] if 0 <= i < len(hourly_tokens) else {}
+            return {
+                "label": f"{i:02d}:00 – {i:02d}:59",
+                **d,
+            }
+
+        self._bar_chart(t, today_data, label_fn=lambda i: str(i) if i % 3 == 0 else "",
+                        hover_fn=_today_hover)
         extra = usage_history.get_extra_spend_delta(email, _today_start(), now)
         if extra:
             self._extra_spend_label(t, "Extra spend today: ", extra)
@@ -249,7 +272,18 @@ class StatsPanel:
         self._section_title(t, "This Week")
         _day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         week_data = usage_history.get_daily_avg(email, _week_start().date(), 7)
-        self._bar_chart(t, week_data, label_fn=lambda i: _day_abbrs[i] if i < 7 else "")
+        _wk_start = _week_start().date()
+
+        def _week_hover(i: int) -> dict:
+            d = week_tokens[i] if 0 <= i < len(week_tokens) else {}
+            day_date = _wk_start + timedelta(days=i)
+            return {
+                "label": f"{_day_abbrs[i]} {day_date.strftime('%d %b')}",
+                **d,
+            }
+
+        self._bar_chart(t, week_data, label_fn=lambda i: _day_abbrs[i] if i < 7 else "",
+                        hover_fn=_week_hover)
         extra = usage_history.get_extra_spend_delta(email, _week_start(), now)
         if extra:
             self._extra_spend_label(t, "Extra spend this week: ", extra)
@@ -260,11 +294,21 @@ class StatsPanel:
 
         # --- This Month ---
         self._section_title(t, "This Month")
-        days_in_month = calendar.monthrange(now.year, now.month)[1]
         month_data = usage_history.get_daily_avg(email, _month_start().date(), days_in_month)
+        _mo_start = _month_start().date()
+
+        def _month_hover(i: int) -> dict:
+            d = month_tokens[i] if 0 <= i < len(month_tokens) else {}
+            day_date = _mo_start + timedelta(days=i)
+            return {
+                "label": day_date.strftime("%d %b"),
+                **d,
+            }
+
         self._bar_chart(
             t, month_data,
-            label_fn=lambda i, d=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
+            label_fn=lambda i, dm=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
+            hover_fn=_month_hover,
         )
         extra = usage_history.get_extra_spend_current(email, _month_start(), now)
         if extra:
@@ -328,7 +372,7 @@ class StatsPanel:
         tk.Label(row, text=label_text, bg=t.bg, fg=t.fg_dim, font=t.font, anchor="w").pack(side=tk.LEFT)
         tk.Label(row, text=value_text, bg=t.bg, fg=t.fg, font=t.font_bold, anchor="w").pack(side=tk.LEFT)
 
-    def _bar_chart(self, t, data: list[int], label_fn) -> None:
+    def _bar_chart(self, t, data: list[int], label_fn, hover_fn=None) -> None:
         n = len(data)
         if n == 0:
             self._dim_label(t, "No data yet")
@@ -346,7 +390,12 @@ class StatsPanel:
         )
         canvas.pack(fill=tk.X)
 
+        # Bar boundaries [(x1, x2), ...] updated on each draw
+        bar_bounds: list[tuple[int, int]] = []
+        hovered_index: list[int] = [-1]  # mutable cell
+
         def _draw(event=None):
+            bar_bounds.clear()
             w = canvas.winfo_width()
             if w <= 1:
                 w = STATS_PANEL_WIDTH - 32
@@ -361,6 +410,7 @@ class StatsPanel:
             for i, pct in enumerate(data):
                 x1 = gap + i * (bar_w + gap)
                 x2 = x1 + bar_w
+                bar_bounds.append((x1, x2))
 
                 # Full-height container (matching ui_popup.py bar style)
                 canvas.create_rectangle(x1, 0, x2, bar_area_h, fill=t.bar_bg, outline="")
@@ -382,7 +432,31 @@ class StatsPanel:
                         anchor="center",
                     )
 
+        def _on_motion(event):
+            if hover_fn is None or not bar_bounds:
+                return
+            x = event.x
+            idx = -1
+            for i, (x1, x2) in enumerate(bar_bounds):
+                if x1 <= x <= x2:
+                    idx = i
+                    break
+            if idx == hovered_index[0]:
+                return
+            hovered_index[0] = idx
+            if idx >= 0 and data[idx] > 0:
+                self._token_panel.show(hover_fn(idx))
+            else:
+                self._token_panel.hide()
+
+        def _on_leave(event):
+            hovered_index[0] = -1
+            self._token_panel.hide()
+
         canvas.bind("<Configure>", _draw)
+        if hover_fn is not None:
+            canvas.bind("<Motion>", _on_motion)
+            canvas.bind("<Leave>", _on_leave)
         self.root.after(10, _draw)
 
     # ------------------------------------------------------------------

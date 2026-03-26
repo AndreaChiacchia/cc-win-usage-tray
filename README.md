@@ -2,7 +2,7 @@
 
 A Windows system tray application that monitors [Claude Code](https://claude.ai/code) usage in real time — session, weekly, and extra tokens — with a dark-themed popup, color-coded progress bars, and Windows toast notifications.
 
-![version](https://img.shields.io/badge/version-v1.7.1-blue)
+![version](https://img.shields.io/badge/version-v1.8.0-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
@@ -23,6 +23,7 @@ A Windows system tray application that monitors [Claude Code](https://claude.ai/
 - **Relative / cooldown time display** — per-account toggle to switch between absolute and relative time remaining
 - **Windows toast notifications** — fired when usage crosses configurable threshold boundaries, with per-account toggle, per-section step (default 10 %), and per-account pace delta suffix showing rate of change
 - **Stats panel** — historical usage charts (hourly today, daily this week Mon–Sun, daily this month) with color-coded bars, extra-spend summaries, and animated open (slide+fade) / close transitions
+- **Token detail panel** — hover any bar in the stats panel to see a per-bar breakdown: total tokens, input/output segmented bar with legend, and cache read/created counts
 - **Per-account settings** — refresh interval (1–30 min), notification threshold, notifications on/off
 - **PTY-based CLI integration** — a state machine handles the Claude CLI banner, the first-run trust dialog, `/status`, and `/usage` commands automatically
 

@@ -240,7 +240,7 @@ class TokenDetailPanel:
             bg=t.bg, fg=t.fg_dim,
             font=subtitle_font,
             anchor="center",
-        ).pack(fill=tk.X, pady=(0, 10))
+        ).pack(fill=tk.X, pady=(0, 12))
 
         if total > 0:
             # --- Segmented bar ---
@@ -250,7 +250,7 @@ class TokenDetailPanel:
                 bg=t.bg,
                 highlightthickness=0,
             )
-            bar_canvas.pack(fill=tk.X, pady=(0, 6))
+            bar_canvas.pack(fill=tk.X, pady=(0, 8))
 
             def _draw_bar(event=None):
                 w = bar_canvas.winfo_width()
@@ -270,7 +270,7 @@ class TokenDetailPanel:
 
             # --- Legend row ---
             legend = tk.Frame(self._content, bg=t.bg)
-            legend.pack(fill=tk.X, pady=(0, 10))
+            legend.pack(fill=tk.X, pady=(0, 12))
 
             self._legend_item(legend, t, t.bar_green, f"Input  {_fmt(inp)}")
             self._legend_item(legend, t, t.bar_yellow, f"Output  {_fmt(out)}")
@@ -295,7 +295,7 @@ class TokenDetailPanel:
 
     def _cache_row(self, t, label: str, value: int) -> None:
         row = tk.Frame(self._content, bg=t.bg)
-        row.pack(fill=tk.X, pady=(1, 0))
+        row.pack(fill=tk.X, pady=(4, 0))
         tk.Label(row, text=label, bg=t.bg, fg=t.fg_dim, font=t.font, anchor="w").pack(
             side=tk.LEFT
         )

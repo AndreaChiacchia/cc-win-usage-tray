@@ -214,7 +214,7 @@ class StatsPanel:
 
         # --- Header ---
         header_row = tk.Frame(self._content, bg=t.bg)
-        header_row.pack(fill=tk.X, pady=(0, 8))
+        header_row.pack(fill=tk.X, pady=(0, 12))
         tk.Label(
             header_row,
             text="Usage Stats",
@@ -337,7 +337,7 @@ class StatsPanel:
     # ------------------------------------------------------------------
 
     def _separator(self, t) -> None:
-        tk.Frame(self._content, bg=t.border, height=1).pack(fill=tk.X, pady=(8, 4))
+        tk.Frame(self._content, bg=t.border, height=1).pack(fill=tk.X, pady=(12, 8))
 
     def _section_title(self, t, text: str) -> None:
         tk.Label(
@@ -346,7 +346,7 @@ class StatsPanel:
             bg=t.bg, fg=t.fg,
             font=t.font_bold,
             anchor="w",
-        ).pack(fill=tk.X, pady=(0, 4))
+        ).pack(fill=tk.X, pady=(0, 8))
 
     def _dim_label(self, t, text: str, parent=None) -> None:
         tk.Label(
@@ -355,7 +355,7 @@ class StatsPanel:
             bg=t.bg, fg=t.fg_dim,
             font=t.font,
             anchor="w",
-        ).pack(fill=tk.X, pady=(2, 0))
+        ).pack(fill=tk.X, pady=(4, 0))
 
     def _accent_label(self, t, text: str, parent=None) -> None:
         tk.Label(
@@ -364,11 +364,11 @@ class StatsPanel:
             bg=t.bg, fg=t.fg,
             font=t.font_bold,
             anchor="w",
-        ).pack(fill=tk.X, pady=(2, 0))
+        ).pack(fill=tk.X, pady=(4, 0))
 
     def _extra_spend_label(self, t, label_text: str, value_text: str) -> None:
         row = tk.Frame(self._content, bg=t.bg)
-        row.pack(fill=tk.X, pady=(2, 0))
+        row.pack(fill=tk.X, pady=(4, 0))
         tk.Label(row, text=label_text, bg=t.bg, fg=t.fg_dim, font=t.font, anchor="w").pack(side=tk.LEFT)
         tk.Label(row, text=value_text, bg=t.bg, fg=t.fg, font=t.font_bold, anchor="w").pack(side=tk.LEFT)
 

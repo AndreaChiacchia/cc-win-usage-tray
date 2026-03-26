@@ -274,13 +274,15 @@ class StatsPanel:
 
         popup_x = self._popup_win.winfo_x()
         popup_y = self._popup_win.winfo_y()
+        popup_h = self._popup_win.winfo_height()
 
         x = popup_x - panel_w - 4
         if x < 0:
             x = popup_x + self._popup_win.winfo_width() + 4
 
         screen_h = self.root.winfo_screenheight()
-        y = max(0, min(popup_y, screen_h - panel_h))
+        popup_bottom = popup_y + popup_h
+        y = max(0, min(popup_bottom - panel_h, screen_h - panel_h))
 
         self.win.geometry(f"{panel_w}x{panel_h}+{x}+{y}")
 
@@ -908,6 +910,7 @@ class StatsPanel:
 
         popup_x = self._popup_win.winfo_x()
         popup_y = self._popup_win.winfo_y()
+        popup_h = self._popup_win.winfo_height()
 
         x = popup_x - panel_w - 4
         if x < 0:
@@ -917,7 +920,8 @@ class StatsPanel:
             self._open_slide_sign = 1
 
         screen_h = self.root.winfo_screenheight()
-        y = max(0, min(popup_y, screen_h - panel_h))
+        popup_bottom = popup_y + popup_h
+        y = max(0, min(popup_bottom - panel_h, screen_h - panel_h))
 
         self._open_final_x = x
         self._open_final_y = y

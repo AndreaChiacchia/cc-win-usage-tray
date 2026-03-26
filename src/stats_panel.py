@@ -1,14 +1,14 @@
-"""Stats Panel — historical usage visualization for Claude Usage Tray.
+"""Stats Panel - historical usage visualization for Claude Usage Tray.
 
 Borderless Toplevel positioned to the left of the main popup (falls back to
-right when there is no room).  Triggered by hovering over an account header in
+right when there is no room). Triggered by hovering over an account header in
 the main popup.
 
 States
 ------
 hidden      Default; window is withdrawn.
 previewing  Window visible; thin pin-progress bar fills over STATS_PIN_DURATION_MS.
-            Leaving the account label before the bar completes → back to hidden.
+            Leaving the account label before the bar completes -> back to hidden.
 pinned      Bar completed; panel stays open regardless of mouse position.
             A close button in the header dismisses it.
 """
@@ -16,31 +16,34 @@ pinned      Bar completed; panel stays open regardless of mouse position.
 import calendar
 import time
 import tkinter as tk
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import theme as theme_mod
 import token_history
 import usage_history
 from config import (
     ANIM_FRAME_MS,
-    COLOR_GREEN_MAX, COLOR_YELLOW_MAX,
-    STATS_PANEL_WIDTH, STATS_BAR_MAX_HEIGHT, STATS_BAR_MIN_HEIGHT,
-    STATS_CHART_HEIGHT, STATS_TOP_LABEL_HEIGHT, STATS_PIN_DURATION_MS,
-    STATS_OPEN_DURATION_MS, STATS_OPEN_SLIDE_PX, STATS_CLOSE_DURATION_MS,
+    COLOR_GREEN_MAX,
+    COLOR_YELLOW_MAX,
+    STATS_BAR_MAX_HEIGHT,
+    STATS_BAR_MIN_HEIGHT,
+    STATS_CHART_HEIGHT,
+    STATS_CLOSE_DURATION_MS,
+    STATS_OPEN_DURATION_MS,
+    STATS_OPEN_SLIDE_PX,
+    STATS_PANEL_WIDTH,
+    STATS_PIN_DURATION_MS,
+    STATS_TOP_LABEL_HEIGHT,
 )
 from format_utils import fmt_tokens
 from token_detail_panel import TokenDetailPanel
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _bar_color(pct: int) -> str:
     t = theme_mod.current()
     if pct < COLOR_GREEN_MAX:
         return t.bar_green
-    elif pct < COLOR_YELLOW_MAX:
+    if pct < COLOR_YELLOW_MAX:
         return t.bar_yellow
     return t.bar_red
 
@@ -49,9 +52,16 @@ def _now() -> datetime:
     return datetime.now()
 
 
-def _today_start() -> datetime:
-    n = datetime.now()
-    return n.replace(hour=0, minute=0, second=0, microsecond=0)
+def _blend_color(color: str, bg: str, blend: float) -> str:
+    color = color.lstrip("#")
+    bg = bg.lstrip("#")
+    blend = max(0.0, min(1.0, blend))
+    cr, cg, cb = (int(color[i:i + 2], 16) for i in (0, 2, 4))
+    br, bgc, bb = (int(bg[i:i + 2], 16) for i in (0, 2, 4))
+    r = round(cr * (1.0 - blend) + br * blend)
+    g = round(cg * (1.0 - blend) + bgc * blend)
+    b = round(cb * (1.0 - blend) + bb * blend)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _week_start() -> datetime:
@@ -66,10 +76,6 @@ def _month_start() -> datetime:
     return n.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-# ---------------------------------------------------------------------------
-# StatsPanel
-# ---------------------------------------------------------------------------
-
 class StatsPanel:
     """Hover-triggered stats panel shown to the left of the main popup."""
 
@@ -83,6 +89,11 @@ class StatsPanel:
         self._state = self._HIDDEN
         self._current_email: str | None = None
         self._current_sections: list | None = None
+        self._selected_date: date | None = None
+        self._selected_day_frame: tk.Frame | None = None
+        self._selected_day_redraw = None
+        self._week_chart_redraw = None
+        self._month_chart_redraw = None
 
         # Pin animation state
         self._pin_anim_id: str | None = None
@@ -93,7 +104,7 @@ class StatsPanel:
         self._open_anim_start: float | None = None
         self._open_final_x: int | None = None
         self._open_final_y: int | None = None
-        self._open_slide_sign: int = 1  # +1 = panel left of popup (slides left), -1 = right (slides right)
+        self._open_slide_sign: int = 1
 
         # Close animation state
         self._close_anim_id: str | None = None
@@ -107,29 +118,21 @@ class StatsPanel:
         self.win.attributes("-toolwindow", True)
         self.win.withdraw()
 
-        # 1-px border via outer frame
         self._outer = tk.Frame(self.win, bg=t.border, padx=1, pady=1)
         self._outer.pack(fill=tk.BOTH, expand=True)
 
         self._inner = tk.Frame(self._outer, bg=t.bg)
         self._inner.pack(fill=tk.BOTH, expand=True)
 
-        # Pin-progress bar (3 px, top of panel)
         self._pin_canvas = tk.Canvas(
             self._inner, height=3, bg=t.bg, highlightthickness=0
         )
         self._pin_canvas.pack(fill=tk.X)
 
-        # Scrollable content area
         self._content = tk.Frame(self._inner, bg=t.bg, padx=16, pady=16)
         self._content.pack(fill=tk.BOTH, expand=True)
 
-        # Token detail panel (shown on bar hover)
         self._token_panel = TokenDetailPanel(root, self.win)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def show(self, email: str, sections: list) -> None:
         """Show (or update) the panel for *email*. Called on hover-enter."""
@@ -137,8 +140,12 @@ class StatsPanel:
         self._cancel_close_animation()
         already_visible = self._state != self._HIDDEN or currently_closing
         was_pinned = self._state == self._PINNED
+        previous_email = self._current_email
         self._current_email = email
         self._current_sections = sections
+
+        if not already_visible or previous_email != email:
+            self._selected_date = _now().date()
 
         if not was_pinned:
             self._state = self._PREVIEWING
@@ -169,6 +176,7 @@ class StatsPanel:
         self._cancel_pin_animation()
         self._state = self._HIDDEN
         self._current_email = None
+        self._selected_date = None
         self._start_close_animation()
         self._token_panel.force_hide()
 
@@ -184,10 +192,6 @@ class StatsPanel:
         if self._state != self._HIDDEN:
             self._rebuild_content()
 
-    # ------------------------------------------------------------------
-    # Layout
-    # ------------------------------------------------------------------
-
     def _position_panel(self) -> None:
         self.win.update_idletasks()
         panel_w = STATS_PANEL_WIDTH
@@ -200,7 +204,6 @@ class StatsPanel:
         if x < 0:
             x = popup_x + self._popup_win.winfo_width() + 4
 
-        # Clamp y to screen
         screen_h = self.root.winfo_screenheight()
         y = max(0, min(popup_y, screen_h - panel_h))
 
@@ -212,24 +215,31 @@ class StatsPanel:
 
         t = theme_mod.current()
         email = self._current_email
+        self._selected_day_frame = None
+        self._selected_day_redraw = None
+        self._week_chart_redraw = None
+        self._month_chart_redraw = None
 
-        # --- Header ---
         header_row = tk.Frame(self._content, bg=t.bg)
         header_row.pack(fill=tk.X, pady=(0, 12))
         tk.Label(
             header_row,
             text="Usage Stats",
-            bg=t.bg, fg=t.fg,
+            bg=t.bg,
+            fg=t.fg,
             font=t.font_bold,
             anchor="w",
         ).pack(side=tk.LEFT)
         if self._state == self._PINNED:
             tk.Button(
                 header_row,
-                text="✕",
-                bg=t.button_bg, fg=t.button_fg,
-                activebackground=t.button_active_bg, activeforeground=t.button_fg,
-                padx=4, pady=1,
+                text="X",
+                bg=t.button_bg,
+                fg=t.button_fg,
+                activebackground=t.button_active_bg,
+                activeforeground=t.button_fg,
+                padx=4,
+                pady=1,
                 font=t.font,
                 cursor="hand2",
                 command=self.force_hide,
@@ -240,51 +250,47 @@ class StatsPanel:
             return
 
         now = _now()
+        if self._selected_date is None or self._selected_date > now.date():
+            self._selected_date = now.date()
 
-        # --- Pre-fetch token data for hover panels ---
         token_history.scan_blocking(email)
-        hourly_tokens = token_history.get_hourly_tokens(now.date(), email)
-        week_tokens = token_history.get_daily_tokens(_week_start().date(), 7, email)
+        week_start = _week_start().date()
+        month_start = _month_start().date()
         days_in_month = calendar.monthrange(now.year, now.month)[1]
-        month_tokens = token_history.get_daily_tokens(_month_start().date(), days_in_month, email)
+        week_tokens = token_history.get_daily_tokens(week_start, 7, email)
+        month_tokens = token_history.get_daily_tokens(month_start, days_in_month, email)
 
-        # --- Today ---
-        self._section_title(t, "Today")
-        today_data = usage_history.get_hourly_avg(email, now.date())
-
-        def _today_hover(i: int) -> dict:
-            d = hourly_tokens[i] if 0 <= i < len(hourly_tokens) else {}
-            return {
-                "label": f"{i:02d}:00 – {i:02d}:59",
-                **d,
-            }
-
-        self._bar_chart(t, today_data, label_fn=lambda i: str(i) if i % 3 == 0 else "",
-                        hover_fn=_today_hover, token_data=hourly_tokens)
-        extra = usage_history.get_extra_spend_delta(email, _today_start(), now)
-        if extra:
-            self._extra_spend_label(t, "Extra spend today: ", extra)
-        else:
-            self._dim_label(t, "No extra spending")
+        self._selected_day_frame = tk.Frame(self._content, bg=t.bg)
+        self._selected_day_frame.pack(fill=tk.X)
+        self._render_selected_day_section(email)
 
         self._separator(t)
 
-        # --- This Week ---
         self._section_title(t, "This Week")
-        _day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        week_data = usage_history.get_daily_avg(email, _week_start().date(), 7)
-        _wk_start = _week_start().date()
+        day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        week_data = usage_history.get_daily_avg(email, week_start, 7)
+        week_disabled = {
+            i for i in range(7) if (week_start + timedelta(days=i)) > now.date()
+        }
 
         def _week_hover(i: int) -> dict:
             d = week_tokens[i] if 0 <= i < len(week_tokens) else {}
-            day_date = _wk_start + timedelta(days=i)
+            day_date = week_start + timedelta(days=i)
             return {
-                "label": f"{_day_abbrs[i]} {day_date.strftime('%d %b')}",
+                "label": f"{day_abbrs[i]} {day_date.strftime('%d %b')}",
                 **d,
             }
 
-        self._bar_chart(t, week_data, label_fn=lambda i: _day_abbrs[i] if i < 7 else "",
-                        hover_fn=_week_hover, token_data=week_tokens)
+        self._week_chart_redraw = self._bar_chart(
+            t,
+            week_data,
+            label_fn=lambda i: day_abbrs[i] if i < 7 else "",
+            hover_fn=_week_hover,
+            token_data=week_tokens,
+            selected_index_fn=self._get_week_selected_index,
+            disabled_indices_fn=lambda: week_disabled,
+            on_click=lambda idx: self._set_selected_date(week_start + timedelta(days=idx)),
+        )
         extra = usage_history.get_extra_spend_delta(email, _week_start(), now)
         if extra:
             self._extra_spend_label(t, "Extra spend this week: ", extra)
@@ -293,24 +299,29 @@ class StatsPanel:
 
         self._separator(t)
 
-        # --- This Month ---
         self._section_title(t, "This Month")
-        month_data = usage_history.get_daily_avg(email, _month_start().date(), days_in_month)
-        _mo_start = _month_start().date()
+        month_data = usage_history.get_daily_avg(email, month_start, days_in_month)
+        month_disabled = {
+            i for i in range(days_in_month) if (month_start + timedelta(days=i)) > now.date()
+        }
 
         def _month_hover(i: int) -> dict:
             d = month_tokens[i] if 0 <= i < len(month_tokens) else {}
-            day_date = _mo_start + timedelta(days=i)
+            day_date = month_start + timedelta(days=i)
             return {
                 "label": day_date.strftime("%d %b"),
                 **d,
             }
 
-        self._bar_chart(
-            t, month_data,
+        self._month_chart_redraw = self._bar_chart(
+            t,
+            month_data,
             label_fn=lambda i, dm=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
             hover_fn=_month_hover,
             token_data=month_tokens,
+            selected_index_fn=self._get_month_selected_index,
+            disabled_indices_fn=lambda: month_disabled,
+            on_click=lambda idx: self._set_selected_date(month_start + timedelta(days=idx)),
         )
         extra = usage_history.get_extra_spend_current(email, _month_start(), now)
         if extra:
@@ -320,13 +331,16 @@ class StatsPanel:
 
         self._separator(t)
 
-        # --- Text stats ---
         stats = tk.Frame(self._content, bg=t.bg)
         stats.pack(fill=tk.X, pady=(4, 0))
 
         peak = usage_history.get_peak_hour(email)
         if peak is not None:
-            self._dim_label(t, f"Peak usage time: {peak:02d}:00 – {(peak + 1) % 24:02d}:00", parent=stats)
+            self._dim_label(
+                t,
+                f"Peak usage time: {peak:02d}:00 - {(peak + 1) % 24:02d}:00",
+                parent=stats,
+            )
 
         avg_max = usage_history.get_avg_daily_max(email)
         if avg_max is not None:
@@ -334,9 +348,98 @@ class StatsPanel:
 
         self.win.update_idletasks()
 
-    # ------------------------------------------------------------------
-    # Widget helpers
-    # ------------------------------------------------------------------
+    def _render_selected_day_section(self, email: str) -> None:
+        if self._selected_day_frame is None:
+            return
+
+        for widget in self._selected_day_frame.winfo_children():
+            widget.destroy()
+
+        t = theme_mod.current()
+        selected_date = self._selected_date or _now().date()
+        title = "Today" if selected_date == _now().date() else selected_date.strftime("%a %d %b")
+        tk.Label(
+            self._selected_day_frame,
+            text=title,
+            bg=t.bg,
+            fg=t.fg,
+            font=t.font_bold,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 8))
+
+        hourly_data = usage_history.get_hourly_avg(email, selected_date)
+        hourly_tokens = token_history.get_hourly_tokens(selected_date, email)
+
+        def _hour_hover(i: int) -> dict:
+            d = hourly_tokens[i] if 0 <= i < len(hourly_tokens) else {}
+            return {
+                "label": f"{i:02d}:00 - {i:02d}:59",
+                **d,
+            }
+
+        self._selected_day_redraw = self._bar_chart(
+            t,
+            hourly_data,
+            label_fn=lambda i: str(i) if i % 3 == 0 else "",
+            hover_fn=_hour_hover,
+            token_data=hourly_tokens,
+            selected_index_fn=self._get_selected_hour_index,
+            parent=self._selected_day_frame,
+        )
+
+        extra = self._selected_day_extra_spend(email, selected_date)
+        if extra:
+            if selected_date == _now().date():
+                label_text = "Extra spend today: "
+            else:
+                label_text = f"Extra spend on {selected_date.strftime('%a %d %b')}: "
+            self._extra_spend_label_in(self._selected_day_frame, t, label_text, extra)
+        else:
+            self._dim_label(t, "No extra spending", parent=self._selected_day_frame)
+
+    def _selected_day_extra_spend(self, email: str, selected_date: date) -> str | None:
+        now = _now()
+        if selected_date > now.date():
+            return None
+        start = datetime.combine(selected_date, datetime.min.time())
+        end = now if selected_date == now.date() else start + timedelta(days=1) - timedelta(microseconds=1)
+        return usage_history.get_extra_spend_delta(email, start, end)
+
+    def _get_selected_hour_index(self) -> int | None:
+        now = _now()
+        if self._selected_date != now.date():
+            return None
+        return now.hour
+
+    def _set_selected_date(self, selected_date: date) -> None:
+        if self._current_email is None:
+            return
+        if selected_date > _now().date():
+            return
+        if selected_date == self._selected_date:
+            return
+
+        self._selected_date = selected_date
+        self._render_selected_day_section(self._current_email)
+        if self._week_chart_redraw is not None:
+            self._week_chart_redraw()
+        if self._month_chart_redraw is not None:
+            self._month_chart_redraw()
+
+    def _get_week_selected_index(self) -> int | None:
+        if self._selected_date is None:
+            return None
+        start = _week_start().date()
+        idx = (self._selected_date - start).days
+        return idx if 0 <= idx < 7 else None
+
+    def _get_month_selected_index(self) -> int | None:
+        if self._selected_date is None:
+            return None
+        start = _month_start().date()
+        days_in_month = calendar.monthrange(start.year, start.month)[1]
+        idx = (self._selected_date - start).days
+        return idx if 0 <= idx < days_in_month else None
 
     def _separator(self, t) -> None:
         tk.Frame(self._content, bg=t.border, height=1).pack(fill=tk.X, pady=(12, 8))
@@ -345,7 +448,8 @@ class StatsPanel:
         tk.Label(
             self._content,
             text=text,
-            bg=t.bg, fg=t.fg,
+            bg=t.bg,
+            fg=t.fg,
             font=t.font_bold,
             anchor="w",
         ).pack(fill=tk.X, pady=(0, 8))
@@ -354,33 +458,53 @@ class StatsPanel:
         tk.Label(
             parent or self._content,
             text=text,
-            bg=t.bg, fg=t.fg_dim,
+            bg=t.bg,
+            fg=t.fg_dim,
             font=t.font,
             anchor="w",
         ).pack(fill=tk.X, pady=(4, 0))
 
-    def _accent_label(self, t, text: str, parent=None) -> None:
+    def _extra_spend_label(self, t, label_text: str, value_text: str) -> None:
+        self._extra_spend_label_in(self._content, t, label_text, value_text)
+
+    def _extra_spend_label_in(self, parent, t, label_text: str, value_text: str) -> None:
+        row = tk.Frame(parent, bg=t.bg)
+        row.pack(fill=tk.X, pady=(4, 0))
         tk.Label(
-            parent or self._content,
-            text=text,
-            bg=t.bg, fg=t.fg,
+            row,
+            text=label_text,
+            bg=t.bg,
+            fg=t.fg_dim,
+            font=t.font,
+            anchor="w",
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            row,
+            text=value_text,
+            bg=t.bg,
+            fg=t.fg,
             font=t.font_bold,
             anchor="w",
-        ).pack(fill=tk.X, pady=(4, 0))
+        ).pack(side=tk.LEFT)
 
-    def _extra_spend_label(self, t, label_text: str, value_text: str) -> None:
-        row = tk.Frame(self._content, bg=t.bg)
-        row.pack(fill=tk.X, pady=(4, 0))
-        tk.Label(row, text=label_text, bg=t.bg, fg=t.fg_dim, font=t.font, anchor="w").pack(side=tk.LEFT)
-        tk.Label(row, text=value_text, bg=t.bg, fg=t.fg, font=t.font_bold, anchor="w").pack(side=tk.LEFT)
-
-    def _bar_chart(self, t, data: list[int], label_fn, hover_fn=None, token_data=None) -> None:
+    def _bar_chart(
+        self,
+        t,
+        data: list[int],
+        label_fn,
+        hover_fn=None,
+        token_data=None,
+        selected_index_fn=None,
+        disabled_indices_fn=None,
+        on_click=None,
+        parent=None,
+    ):
         n = len(data)
         if n == 0:
-            self._dim_label(t, "No data yet")
-            return
+            self._dim_label(t, "No data yet", parent=parent)
+            return None
 
-        frame = tk.Frame(self._content, bg=t.bg)
+        frame = tk.Frame(parent or self._content, bg=t.bg)
         frame.pack(fill=tk.X)
 
         top_h = STATS_TOP_LABEL_HEIGHT if token_data else 0
@@ -393,9 +517,8 @@ class StatsPanel:
         )
         canvas.pack(fill=tk.X)
 
-        # Bar boundaries [(x1, x2), ...] updated on each draw
         bar_bounds: list[tuple[int, int]] = []
-        hovered_index: list[int] = [-1]  # mutable cell
+        hovered_index: list[int] = [-1]
 
         def _draw(event=None):
             bar_bounds.clear()
@@ -404,14 +527,15 @@ class StatsPanel:
                 w = STATS_PANEL_WIDTH - 32
             canvas.delete("all")
 
+            selected_index = selected_index_fn() if selected_index_fn is not None else None
+            disabled_indices = disabled_indices_fn() if disabled_indices_fn is not None else set()
+
             bar_area_h = STATS_BAR_MAX_HEIGHT
             label_h = STATS_CHART_HEIGHT - bar_area_h
 
             gap = max(3, w // (n * 6))
             bar_w = max(6, (w - gap * (n + 1)) // n)
 
-            # Period-based label selection: show the peak bar in each fixed window
-            # 5-bar windows for today (24h) and month (28-31d); 3-bar windows for week (7d)
             if top_h > 0 and token_data is not None:
                 period = 7 if n >= 28 else 5 if n > 7 else 3
                 show_label = set()
@@ -431,24 +555,36 @@ class StatsPanel:
                 x1 = gap + i * (bar_w + gap)
                 x2 = x1 + bar_w
                 bar_bounds.append((x1, x2))
+                is_disabled = i in disabled_indices
+                is_selected = i == selected_index
 
-                # Full-height container shifted down by top_h (matching ui_popup.py bar style)
-                canvas.create_rectangle(x1, top_h, x2, top_h + bar_area_h, fill=t.bar_bg, outline="")
+                track_fill = _blend_color(t.bar_bg, t.bg, 0.35) if is_disabled else t.bar_bg
+                canvas.create_rectangle(x1, top_h, x2, top_h + bar_area_h, fill=track_fill, outline="")
 
-                # Colored fill rising from bottom
                 if pct > 0:
                     bh = max(STATS_BAR_MIN_HEIGHT, int(pct / 100 * bar_area_h))
                     y1 = top_h + bar_area_h - bh
-                    canvas.create_rectangle(x1, y1, x2, top_h + bar_area_h, fill=_bar_color(pct), outline="")
+                    fill = _blend_color(_bar_color(pct), t.bg, 0.45) if is_disabled else _bar_color(pct)
+                    canvas.create_rectangle(x1, y1, x2, top_h + bar_area_h, fill=fill, outline="")
 
-                # Token count label above bar
-                if i in show_label:
+                if is_selected:
+                    canvas.create_rectangle(
+                        x1 - 2,
+                        top_h - 2,
+                        x2 + 1,
+                        top_h + bar_area_h + 1,
+                        outline=t.chart_select_border,
+                        width=1,
+                    )
+
+                if i in show_label and not is_disabled:
                     slot = token_data[i]
                     total = slot.get("input", 0) + slot.get("output", 0)
                     if total > 0:
                         cx = (x1 + x2) // 2
                         canvas.create_text(
-                            cx, top_h - 2,
+                            cx,
+                            top_h - 2,
                             text=f"{fmt_tokens(total)} \u25c6",
                             fill=t.fg,
                             font=(t.font_family, max(t.font_size - 2, 7)),
@@ -458,11 +594,22 @@ class StatsPanel:
                 lbl = label_fn(i)
                 if lbl:
                     cx = (x1 + x2) // 2
+                    lbl_fill = (
+                        t.chart_select_label
+                        if is_selected
+                        else _blend_color(t.fg_dim, t.bg, 0.45) if is_disabled else t.fg_dim
+                    )
+                    lbl_font = (
+                        (t.font_family, max(t.font_size - 3, 7), "bold")
+                        if is_selected
+                        else (t.font_family, max(t.font_size - 3, 7))
+                    )
                     canvas.create_text(
-                        cx, top_h + bar_area_h + 2 + label_h // 2,
+                        cx,
+                        top_h + bar_area_h + 2 + label_h // 2,
                         text=lbl,
-                        fill=t.fg_dim,
-                        font=(t.font_family, max(t.font_size - 3, 7)),
+                        fill=lbl_fill,
+                        font=lbl_font,
                         anchor="center",
                     )
 
@@ -478,7 +625,8 @@ class StatsPanel:
             if idx == hovered_index[0]:
                 return
             hovered_index[0] = idx
-            if idx >= 0 and data[idx] > 0:
+            disabled_indices = disabled_indices_fn() if disabled_indices_fn is not None else set()
+            if idx >= 0 and idx not in disabled_indices and data[idx] > 0:
                 self._token_panel.show(hover_fn(idx))
             else:
                 self._token_panel.hide()
@@ -487,15 +635,25 @@ class StatsPanel:
             hovered_index[0] = -1
             self._token_panel.hide()
 
+        def _on_click(event):
+            if on_click is None or not bar_bounds:
+                return
+            disabled_indices = disabled_indices_fn() if disabled_indices_fn is not None else set()
+            x = event.x
+            for i, (x1, x2) in enumerate(bar_bounds):
+                if x1 <= x <= x2:
+                    if i not in disabled_indices:
+                        on_click(i)
+                    break
+
         canvas.bind("<Configure>", _draw)
         if hover_fn is not None:
             canvas.bind("<Motion>", _on_motion)
             canvas.bind("<Leave>", _on_leave)
+        if on_click is not None:
+            canvas.bind("<Button-1>", _on_click)
         self.root.after(10, _draw)
-
-    # ------------------------------------------------------------------
-    # Pin animation
-    # ------------------------------------------------------------------
+        return _draw
 
     def _start_pin_animation(self) -> None:
         self._cancel_pin_animation()
@@ -519,9 +677,7 @@ class StatsPanel:
             self._pin_canvas.delete("all")
             bar_w = int(w * fraction)
             if bar_w > 0:
-                self._pin_canvas.create_rectangle(
-                    0, 0, bar_w, 3, fill=t.bar_green, outline=""
-                )
+                self._pin_canvas.create_rectangle(0, 0, bar_w, 3, fill=t.bar_green, outline="")
 
         if fraction >= 1.0:
             self._become_pinned()
@@ -544,10 +700,6 @@ class StatsPanel:
                 pass
             self._pin_anim_id = None
         self._pin_start_time = None
-
-    # ------------------------------------------------------------------
-    # Open animation
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _ease_out_quad(t: float) -> float:
@@ -575,9 +727,9 @@ class StatsPanel:
         x = popup_x - panel_w - 4
         if x < 0:
             x = popup_x + self._popup_win.winfo_width() + 4
-            self._open_slide_sign = -1  # panel right of popup; starts left, slides right
+            self._open_slide_sign = -1
         else:
-            self._open_slide_sign = 1   # panel left of popup; starts right, slides left
+            self._open_slide_sign = 1
 
         screen_h = self.root.winfo_screenheight()
         y = max(0, min(popup_y, screen_h - panel_h))
@@ -585,7 +737,6 @@ class StatsPanel:
         self._open_final_x = x
         self._open_final_y = y
 
-        # Start position: shifted toward the popup by STATS_OPEN_SLIDE_PX
         start_x = x + self._open_slide_sign * STATS_OPEN_SLIDE_PX
         self.win.geometry(f"{panel_w}x{panel_h}+{start_x}+{y}")
         self.win.attributes("-alpha", 0.0)
@@ -621,10 +772,6 @@ class StatsPanel:
         else:
             self._open_anim_id = self.root.after(ANIM_FRAME_MS, self._tick_open_animation)
 
-    # ------------------------------------------------------------------
-    # Close animation
-    # ------------------------------------------------------------------
-
     def _cancel_close_animation(self) -> None:
         if self._close_anim_id is not None:
             try:
@@ -648,11 +795,10 @@ class StatsPanel:
             return
         elapsed_ms = (time.monotonic() - self._close_anim_start) * 1000
         t = min(elapsed_ms / STATS_CLOSE_DURATION_MS, 1.0)
-        # ease-in: (1-t)² — starts at 1, curves quickly to 0
         alpha = (1.0 - t) ** 2
         self.win.attributes("-alpha", alpha)
         if t >= 1.0:
-            self.win.attributes("-alpha", 1.0)  # reset for next open
+            self.win.attributes("-alpha", 1.0)
             self._close_anim_id = None
             self._close_anim_start = None
             self.win.withdraw()

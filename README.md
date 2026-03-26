@@ -22,7 +22,7 @@ A Windows system tray application that monitors [Claude Code](https://claude.ai/
 - **Multi-account support** — tracks all accounts simultaneously; the active account is shown first, historical data is preserved across refreshes
 - **Relative / cooldown time display** — per-account toggle to switch between absolute and relative time remaining
 - **Windows toast notifications** — fired when usage crosses configurable threshold boundaries, with per-account toggle, per-section step (default 10 %), and per-account pace delta suffix showing rate of change
-- **Stats panel** — historical usage charts (hourly today, daily this week Mon–Sun, daily this month) with color-coded bars, extra-spend summaries, and animated open (slide+fade) / close transitions
+- **Stats panel** — historical usage charts with a selected-day hourly view, clickable day selection in week/month charts, clear current-day highlighting, extra-spend summaries, and animated open (slide+fade) / close transitions
 - **Token detail panel** — hover any bar in the stats panel to see a per-bar breakdown: total tokens, input/output segmented bar with legend, and cache read/created counts
 - **Per-account settings** — refresh interval (1–30 min), notification threshold, notifications on/off
 - **PTY-based CLI integration** — a state machine handles the Claude CLI banner, the first-run trust dialog, `/status`, and `/usage` commands automatically

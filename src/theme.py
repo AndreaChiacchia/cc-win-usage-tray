@@ -49,6 +49,8 @@ class Theme:
     bar_green: str
     bar_yellow: str
     bar_red: str
+    chart_select_border: str
+    chart_select_label: str
     button_bg: str
     button_fg: str
     button_active_bg: str
@@ -98,6 +100,8 @@ CLAUDE_CODE = Theme(
     bar_green="#10b981",
     bar_yellow="#f59e0b",
     bar_red="#ef4444",
+    chart_select_border="#e5e5e5",
+    chart_select_label="#e5e5e5",
     button_bg="#2d2d2d",
     button_fg="#e5e5e5",
     button_active_bg="#3d3d3d",
@@ -117,6 +121,8 @@ TERMINAL = Theme(
     bar_green="#00cc00",
     bar_yellow="#cccc00",
     bar_red="#cc0000",
+    chart_select_border="#cccccc",
+    chart_select_label="#cccccc",
     button_bg="#1a1a1a",
     button_fg="#cccccc",
     button_active_bg="#2a2a2a",
@@ -136,6 +142,8 @@ DRACULA = Theme(
     bar_green="#50fa7b",
     bar_yellow="#f1fa8c",
     bar_red="#ff5555",
+    chart_select_border="#f8f8f2",
+    chart_select_label="#f8f8f2",
     button_bg="#44475a",
     button_fg="#f8f8f2",
     button_active_bg="#6272a4",
@@ -155,6 +163,8 @@ LIGHT = Theme(
     bar_green="#16a34a",
     bar_yellow="#d97706",
     bar_red="#dc2626",
+    chart_select_border="#1e1e1e",
+    chart_select_label="#1e1e1e",
     button_bg="#f0f0f0",
     button_fg="#1e1e1e",
     button_active_bg="#e0e0e0",
@@ -174,6 +184,8 @@ SOLARIZED_DARK = Theme(
     bar_green="#859900",
     bar_yellow="#b58900",
     bar_red="#dc322f",
+    chart_select_border="#839496",
+    chart_select_label="#839496",
     button_bg="#073642",
     button_fg="#839496",
     button_active_bg="#0d3c4a",
@@ -193,6 +205,8 @@ HIGH_CONTRAST = Theme(
     bar_green="#00ff00",
     bar_yellow="#ffff00",
     bar_red="#ff0000",
+    chart_select_border="#ffffff",
+    chart_select_label="#ffffff",
     button_bg="#1a1a1a",
     button_fg="#ffffff",
     button_active_bg="#333333",
@@ -285,6 +299,8 @@ def load_custom_theme(path: str) -> Theme:
         bar_green=data["bar_green"],
         bar_yellow=data["bar_yellow"],
         bar_red=data["bar_red"],
+        chart_select_border=data.get("chart_select_border", data["fg"]),
+        chart_select_label=data.get("chart_select_label", data["fg"]),
         button_bg=data["button_bg"],
         button_fg=data["button_fg"],
         button_active_bg=data["button_active_bg"],

@@ -96,3 +96,30 @@ Each mixin lives in its own file and defines methods that operate on `self` — 
 ### Color thresholds
 
 Defined in `config.py`: green < 50%, yellow 50–79%, red ≥ 80%. Applied consistently in both `icon_generator.py` and `ui_animations.py` (`_bar_color`).
+
+## Design Context
+
+Full details in [`.impeccable.md`](.impeccable.md). Summary for quick reference:
+
+### Users
+Developers using Claude Code CLI who want at-a-glance visibility into token budgets. They interact passively — the popup is a quick check-in, not a workflow destination.
+
+### Brand Personality
+**Technical + polished/premium.** Three-word anchor: **precise, composed, crafted.**
+Base visual reference: Claude.ai (dark, modern, warm dark grays with subtle polish). The app has its own identity and full custom theming — don't copy Claude.ai literally, but match its quality bar.
+
+### Emotional Goals
+1. **Awareness** — Usage data must be instantly legible; hierarchy and color do the work.
+2. **Delight** — Small purposeful polish moments (smooth bar-fill, shimmer on load, clean transitions). Nothing gratuitous.
+
+### Design Principles
+1. **Data clarity first.** No visual noise that competes with numbers.
+2. **Polish at the detail level.** Quality lives in consistent spacing (4px grid), precise colors, smooth easing — not in complexity.
+3. **Technical confidence.** System fonts, crisp sizes, monospace for numeric values, precise threshold colors (not soft pastels).
+4. **Unobtrusive by default, expressive when needed.** Quiet when usage is low; progressively urgent (green → amber → red) as limits approach.
+5. **WCAG AA as the floor.** All built-in themes must meet 4.5:1 contrast ratio for text.
+
+### Key Tokens (Default Theme)
+- Background: `#1e1e1e` | Text: `#e5e5e5` | Dim text: `#8b8b8b` | Border: `#333333`
+- Green: `#10b981` | Amber: `#f59e0b` | Red: `#ef4444`
+- Font: Segoe UI 10pt | Popup width: 520px | Padding: 24px | Bar height: 18px | No border-radius

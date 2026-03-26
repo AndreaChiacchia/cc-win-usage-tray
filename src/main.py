@@ -195,6 +195,10 @@ class ClaudeUsageTray:
             self.root.after(0, self._on_refresh_interval_changed)
             usage_data = parse_usage(usage_text)
 
+            if usage_data.error:
+                self._on_usage_error(usage_data.error)
+                return
+
             # Load OLD accounts BEFORE saving new data
             old_accounts = storage.load_all_accounts()
 

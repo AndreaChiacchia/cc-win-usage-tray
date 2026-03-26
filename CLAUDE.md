@@ -61,7 +61,11 @@ The app is split into modules, all in `src/`:
 | `main.py` | `ClaudeUsageTray` class — owns the Tkinter main loop, pystray tray icon, and orchestrates refresh cycles |
 | `claude_runner.py` | Spawns Claude CLI via `winpty` PTY, drives a state machine (`WAITING_FOR_BANNER → SENDING_USAGE → CAPTURING → DONE`) to extract `/usage` output |
 | `usage_parser.py` | Parses the ANSI-stripped text into `UsageData` / `UsageSection` dataclasses using regex |
-| `ui_popup.py` | Borderless Tkinter popup positioned above the taskbar; rebuilt on each refresh |
+| `ui_popup.py` | `UsagePopup` class — core popup logic (init, show/hide, content build, theme); inherits all four UI mixins below |
+| `ui_scroll.py` | `ScrollMixin` — custom scrollbar and scroll canvas logic |
+| `ui_animations.py` | `AnimationsMixin` — shimmer, syncing dots, bar-fill, pace-delta animations; also exports `_bar_color`, `_lighten_color`, `_blend_color` helpers |
+| `ui_monitor.py` | `MonitorMixin` — Win32 monitor info, drag support, screen-change guard |
+| `ui_settings.py` | `SettingsMixin` — account settings, notification threshold, and theme selector windows |
 | `icon_generator.py` | Generates 64×64 RGBA tray icons (normal/loading/error) using Pillow |
 | `config.py` | All constants: timeouts, colors, dimensions, refresh interval |
 | `notifier.py` | Windows toast notifications for usage threshold crossings |
@@ -78,6 +82,16 @@ The app is split into modules, all in `src/`:
 
 The runner handles three startup scenarios: normal banner, first-run trust dialog (auto-confirmed by sending `\r`), and a fallback timeout if neither appears. After the banner, it sends `/usage\r` and collects output until `_USAGE_HEADER_RE` matches.
 
+### UI popup mixin architecture
+
+`UsagePopup` uses Python mixins to keep the popup module manageable. The class declaration is:
+
+```python
+class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
+```
+
+Each mixin lives in its own file and defines methods that operate on `self` — no parameter-passing overhead, no interface changes. All shared state (widget refs, animation IDs, etc.) is initialised in `UsagePopup.__init__`. When adding new popup behaviour, place it in the most relevant mixin rather than in `ui_popup.py` directly.
+
 ### Color thresholds
 
-Defined in `config.py`: green < 50%, yellow 50–79%, red ≥ 80%. Applied consistently in both `icon_generator.py` and `ui_popup.py`.
+Defined in `config.py`: green < 50%, yellow 50–79%, red ≥ 80%. Applied consistently in both `icon_generator.py` and `ui_animations.py` (`_bar_color`).

@@ -101,6 +101,7 @@ class StatsPanel:
         self.win.overrideredirect(True)
         self.win.configure(bg=t.border)
         self.win.attributes("-topmost", True)
+        self.win.attributes("-toolwindow", True)
         self.win.withdraw()
 
         # 1-px border via outer frame

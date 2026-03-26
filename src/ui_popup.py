@@ -211,6 +211,8 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
             font=t.font,
             **t.button_style_kwargs(),
         )
+        if self._sb_canvas.winfo_width() > 0:
+            self._update_scroll_sb(*self._scroll_canvas.yview())
         self._stats_panel.apply_theme()
 
     def _clear_content(self):

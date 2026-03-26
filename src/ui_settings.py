@@ -283,15 +283,16 @@ class SettingsMixin:
 
         def _update_sb(first, last):
             first, last = float(first), float(last)
+            current_theme = theme_mod.current()
             sb_canvas.delete("all")
             h = sb_canvas.winfo_height()
             if h <= 1:
                 h = scroll_height
-            sb_canvas.create_rectangle(0, 0, SB_W, h, fill=t.bar_bg, outline="")
+            sb_canvas.create_rectangle(0, 0, SB_W, h, fill=current_theme.bar_bg, outline="")
             if last - first < 1.0:
                 y1 = int(first * h)
                 y2 = int(last * h)
-                color = t.fg if _sb_hover else t.fg_dim
+                color = current_theme.fg if _sb_hover else current_theme.fg_dim
                 sb_canvas.create_rectangle(1, y1, SB_W - 1, y2, fill=color, outline="")
 
         scroll_canvas.configure(yscrollcommand=_update_sb)
@@ -504,6 +505,7 @@ class SettingsMixin:
             apply_btn.configure(bg=new_t.button_bg, fg=new_t.button_fg,
                                 activebackground=new_t.button_active_bg,
                                 activeforeground=new_t.button_fg, font=new_t.font)
+            _update_sb(*scroll_canvas.yview())
 
             # Redraw all preview cards (checkmark updates for the new active theme)
             for n, c in card_canvases.items():

@@ -24,7 +24,8 @@ Follow SemVer:
 4. Push `staging` to remote.
 5. Switch to `main`, merge `staging`.
 6. Push `main`.
-7. Compile a changelog from commits since the last tag. Each entry is one line prefixed with its type (`feat:`, `fix:`, etc.) followed by a concise summary and the short commit hash. No section grouping. Tag on `main` with an annotated tag containing the changelog: `git tag -a v{version} -m "$(changelog)"` and push the tag.
+7. Switch back to `staging`, fast-forward merge `main` into it, and push: `git checkout staging && git merge main && git push origin staging`.
+8. Compile a changelog from commits since the last tag. Each entry is one line prefixed with its type (`feat:`, `fix:`, etc.) followed by a concise summary and the short commit hash. No section grouping. Tag on `main` with an annotated tag containing the changelog: `git tag -a v{version} -m "$(changelog)"` and push the tag.
 
 ## Setup & Running
 

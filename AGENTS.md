@@ -1,6 +1,6 @@
-# GEMINI.md
+# AGENTS.md
 
-This file provides guidance to Gemini (Gemini CLI) when working with code in this repository.
+This file provides guidance to Codex when working with code in this repository.
 
 ## Project Overview
 

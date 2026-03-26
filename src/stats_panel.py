@@ -25,9 +25,10 @@ from config import (
     ANIM_FRAME_MS,
     COLOR_GREEN_MAX, COLOR_YELLOW_MAX,
     STATS_PANEL_WIDTH, STATS_BAR_MAX_HEIGHT, STATS_BAR_MIN_HEIGHT,
-    STATS_CHART_HEIGHT, STATS_PIN_DURATION_MS,
+    STATS_CHART_HEIGHT, STATS_TOP_LABEL_HEIGHT, STATS_PIN_DURATION_MS,
     STATS_OPEN_DURATION_MS, STATS_OPEN_SLIDE_PX, STATS_CLOSE_DURATION_MS,
 )
+from format_utils import fmt_tokens
 from token_detail_panel import TokenDetailPanel
 
 
@@ -259,7 +260,7 @@ class StatsPanel:
             }
 
         self._bar_chart(t, today_data, label_fn=lambda i: str(i) if i % 3 == 0 else "",
-                        hover_fn=_today_hover)
+                        hover_fn=_today_hover, token_data=hourly_tokens)
         extra = usage_history.get_extra_spend_delta(email, _today_start(), now)
         if extra:
             self._extra_spend_label(t, "Extra spend today: ", extra)
@@ -283,7 +284,7 @@ class StatsPanel:
             }
 
         self._bar_chart(t, week_data, label_fn=lambda i: _day_abbrs[i] if i < 7 else "",
-                        hover_fn=_week_hover)
+                        hover_fn=_week_hover, token_data=week_tokens)
         extra = usage_history.get_extra_spend_delta(email, _week_start(), now)
         if extra:
             self._extra_spend_label(t, "Extra spend this week: ", extra)
@@ -309,6 +310,7 @@ class StatsPanel:
             t, month_data,
             label_fn=lambda i, dm=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
             hover_fn=_month_hover,
+            token_data=month_tokens,
         )
         extra = usage_history.get_extra_spend_current(email, _month_start(), now)
         if extra:
@@ -372,7 +374,7 @@ class StatsPanel:
         tk.Label(row, text=label_text, bg=t.bg, fg=t.fg_dim, font=t.font, anchor="w").pack(side=tk.LEFT)
         tk.Label(row, text=value_text, bg=t.bg, fg=t.fg, font=t.font_bold, anchor="w").pack(side=tk.LEFT)
 
-    def _bar_chart(self, t, data: list[int], label_fn, hover_fn=None) -> None:
+    def _bar_chart(self, t, data: list[int], label_fn, hover_fn=None, token_data=None) -> None:
         n = len(data)
         if n == 0:
             self._dim_label(t, "No data yet")
@@ -381,10 +383,11 @@ class StatsPanel:
         frame = tk.Frame(self._content, bg=t.bg)
         frame.pack(fill=tk.X)
 
+        top_h = STATS_TOP_LABEL_HEIGHT if token_data else 0
         canvas = tk.Canvas(
             frame,
             width=STATS_PANEL_WIDTH - 32,
-            height=STATS_CHART_HEIGHT,
+            height=STATS_CHART_HEIGHT + top_h,
             bg=t.bg,
             highlightthickness=0,
         )
@@ -407,25 +410,56 @@ class StatsPanel:
             gap = max(3, w // (n * 6))
             bar_w = max(6, (w - gap * (n + 1)) // n)
 
+            # Period-based label selection: show the peak bar in each fixed window
+            # 5-bar windows for today (24h) and month (28-31d); 3-bar windows for week (7d)
+            if top_h > 0 and token_data is not None:
+                period = 7 if n >= 28 else 5 if n > 7 else 3
+                show_label = set()
+                for chunk_start in range(0, n, period):
+                    best_idx, best_tot = -1, 0
+                    for idx in range(chunk_start, min(chunk_start + period, len(token_data))):
+                        tot = token_data[idx].get("input", 0) + token_data[idx].get("output", 0)
+                        if tot > best_tot:
+                            best_tot = tot
+                            best_idx = idx
+                    if best_idx >= 0:
+                        show_label.add(best_idx)
+            else:
+                show_label = set()
+
             for i, pct in enumerate(data):
                 x1 = gap + i * (bar_w + gap)
                 x2 = x1 + bar_w
                 bar_bounds.append((x1, x2))
 
-                # Full-height container (matching ui_popup.py bar style)
-                canvas.create_rectangle(x1, 0, x2, bar_area_h, fill=t.bar_bg, outline="")
+                # Full-height container shifted down by top_h (matching ui_popup.py bar style)
+                canvas.create_rectangle(x1, top_h, x2, top_h + bar_area_h, fill=t.bar_bg, outline="")
 
                 # Colored fill rising from bottom
                 if pct > 0:
                     bh = max(STATS_BAR_MIN_HEIGHT, int(pct / 100 * bar_area_h))
-                    y1 = bar_area_h - bh
-                    canvas.create_rectangle(x1, y1, x2, bar_area_h, fill=_bar_color(pct), outline="")
+                    y1 = top_h + bar_area_h - bh
+                    canvas.create_rectangle(x1, y1, x2, top_h + bar_area_h, fill=_bar_color(pct), outline="")
+
+                # Token count label above bar
+                if i in show_label:
+                    slot = token_data[i]
+                    total = slot.get("input", 0) + slot.get("output", 0)
+                    if total > 0:
+                        cx = (x1 + x2) // 2
+                        canvas.create_text(
+                            cx, top_h - 2,
+                            text=f"{fmt_tokens(total)} \u25c6",
+                            fill=t.fg,
+                            font=(t.font_family, max(t.font_size - 2, 7)),
+                            anchor="s",
+                        )
 
                 lbl = label_fn(i)
                 if lbl:
                     cx = (x1 + x2) // 2
                     canvas.create_text(
-                        cx, bar_area_h + 2 + label_h // 2,
+                        cx, top_h + bar_area_h + 2 + label_h // 2,
                         text=lbl,
                         fill=t.fg_dim,
                         font=(t.font_family, max(t.font_size - 3, 7)),

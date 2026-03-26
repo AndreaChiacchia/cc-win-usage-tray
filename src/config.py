@@ -62,6 +62,7 @@ STATS_PANEL_WIDTH = 700
 STATS_BAR_MAX_HEIGHT = 120
 STATS_BAR_MIN_HEIGHT = 2
 STATS_CHART_HEIGHT = 150
+STATS_TOP_LABEL_HEIGHT = 16  # zone above bars for token count labels (px, 4px grid)
 STATS_PIN_DURATION_MS = 1200  # ms hovering before panel becomes pinned
 STATS_OPEN_DURATION_MS = 220   # slide+fade open animation (ms)
 STATS_OPEN_SLIDE_PX = 24       # horizontal slide distance (px)

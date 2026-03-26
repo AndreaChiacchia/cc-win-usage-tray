@@ -76,12 +76,84 @@ def _month_start() -> datetime:
     return n.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
+def _empty_token_totals() -> dict:
+    return {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
+
+
+def _date_label(value: date) -> str:
+    return f"{value.day} {value.strftime('%b')}"
+
+
+def _compact_range_label(start: date, end: date) -> str:
+    if start == end:
+        return str(start.day)
+    return f"{start.day}-{end.day}"
+
+
+def _range_label(start: date, end: date) -> str:
+    if start == end:
+        return _date_label(start)
+    return f"{_date_label(start)} - {_date_label(end)}"
+
+
+def _build_month_week_slots(
+    month_start: date,
+    days_in_month: int,
+    today: date,
+    month_data: list[int],
+    month_tokens: list[dict],
+) -> list[dict]:
+    month_end = month_start + timedelta(days=days_in_month - 1)
+    cursor = month_start - timedelta(days=month_start.weekday())
+    slots: list[dict] = []
+
+    while cursor <= month_end:
+        week_end = cursor + timedelta(days=6)
+        slot_start = max(cursor, month_start)
+        slot_end = min(week_end, month_end)
+        valid_indices: list[int] = []
+
+        day_cursor = slot_start
+        while day_cursor <= slot_end:
+            if day_cursor <= today:
+                valid_indices.append((day_cursor - month_start).days)
+            day_cursor += timedelta(days=1)
+
+        token_totals = _empty_token_totals()
+        pct_values: list[int] = []
+        for idx in valid_indices:
+            if 0 <= idx < len(month_data):
+                pct_values.append(month_data[idx] or 0)
+            if 0 <= idx < len(month_tokens):
+                token_slot = month_tokens[idx]
+                token_totals["input"] += token_slot.get("input", 0)
+                token_totals["output"] += token_slot.get("output", 0)
+                token_totals["cache_read"] += token_slot.get("cache_read", 0)
+                token_totals["cache_creation"] += token_slot.get("cache_creation", 0)
+
+        slots.append({
+            "start": slot_start,
+            "end": slot_end,
+            "label": _compact_range_label(slot_start, slot_end),
+            "hover_label": _range_label(slot_start, slot_end),
+            "pct": int(sum(pct_values) / len(pct_values)) if pct_values else 0,
+            "tokens": token_totals,
+            "disabled": not valid_indices,
+            "selected_date": valid_indices and (month_start + timedelta(days=valid_indices[-1])) or None,
+        })
+        cursor += timedelta(days=7)
+
+    return slots
+
+
 class StatsPanel:
     """Hover-triggered stats panel shown to the left of the main popup."""
 
     _HIDDEN = "hidden"
     _PREVIEWING = "previewing"
     _PINNED = "pinned"
+    _MONTH_VIEW_DAY = "day"
+    _MONTH_VIEW_WEEK = "week"
 
     def __init__(self, root: tk.Tk, popup_win: tk.Toplevel):
         self.root = root
@@ -94,6 +166,9 @@ class StatsPanel:
         self._selected_day_redraw = None
         self._week_chart_redraw = None
         self._month_chart_redraw = None
+        self._month_section_frame: tk.Frame | None = None
+        self._month_chart_context: dict | None = None
+        self._month_view_mode = self._MONTH_VIEW_DAY
 
         # Pin animation state
         self._pin_anim_id: str | None = None
@@ -219,6 +294,8 @@ class StatsPanel:
         self._selected_day_redraw = None
         self._week_chart_redraw = None
         self._month_chart_redraw = None
+        self._month_section_frame = None
+        self._month_chart_context = None
 
         header_row = tk.Frame(self._content, bg=t.bg)
         header_row.pack(fill=tk.X, pady=(0, 12))
@@ -299,35 +376,25 @@ class StatsPanel:
 
         self._separator(t)
 
-        self._section_title(t, "This Month")
         month_data = usage_history.get_daily_avg(email, month_start, days_in_month)
-        month_disabled = {
-            i for i in range(days_in_month) if (month_start + timedelta(days=i)) > now.date()
+        self._month_chart_context = {
+            "email": email,
+            "now": now,
+            "month_start": month_start,
+            "days_in_month": days_in_month,
+            "month_data": month_data,
+            "month_tokens": month_tokens,
+            "week_slots": _build_month_week_slots(
+                month_start,
+                days_in_month,
+                now.date(),
+                month_data,
+                month_tokens,
+            ),
         }
-
-        def _month_hover(i: int) -> dict:
-            d = month_tokens[i] if 0 <= i < len(month_tokens) else {}
-            day_date = month_start + timedelta(days=i)
-            return {
-                "label": day_date.strftime("%d %b"),
-                **d,
-            }
-
-        self._month_chart_redraw = self._bar_chart(
-            t,
-            month_data,
-            label_fn=lambda i, dm=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
-            hover_fn=_month_hover,
-            token_data=month_tokens,
-            selected_index_fn=self._get_month_selected_index,
-            disabled_indices_fn=lambda: month_disabled,
-            on_click=lambda idx: self._set_selected_date(month_start + timedelta(days=idx)),
-        )
-        extra = usage_history.get_extra_spend_current(email, _month_start(), now)
-        if extra:
-            self._extra_spend_label(t, "Extra spend this month: ", extra)
-        else:
-            self._dim_label(t, "No extra spending")
+        self._month_section_frame = tk.Frame(self._content, bg=t.bg)
+        self._month_section_frame.pack(fill=tk.X)
+        self._render_month_section()
 
         self._separator(t)
 
@@ -426,6 +493,117 @@ class StatsPanel:
         if self._month_chart_redraw is not None:
             self._month_chart_redraw()
 
+    def _set_month_view_mode(self, mode: str) -> None:
+        if mode not in {self._MONTH_VIEW_DAY, self._MONTH_VIEW_WEEK}:
+            return
+        if mode == self._month_view_mode:
+            return
+        self._month_view_mode = mode
+        self._token_panel.force_hide()
+        self._render_month_section()
+
+    def _render_month_section(self) -> None:
+        if self._month_section_frame is None or self._month_chart_context is None:
+            return
+
+        for widget in self._month_section_frame.winfo_children():
+            widget.destroy()
+
+        t = theme_mod.current()
+        ctx = self._month_chart_context
+
+        title_row = tk.Frame(self._month_section_frame, bg=t.bg)
+        title_row.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(
+            title_row,
+            text="This Month",
+            bg=t.bg,
+            fg=t.fg,
+            font=t.font_bold,
+            anchor="w",
+        ).pack(side=tk.LEFT)
+
+        toggle = tk.Frame(title_row, bg=t.bg)
+        toggle.pack(side=tk.RIGHT)
+        self._month_toggle_button(toggle, t, "Day", self._MONTH_VIEW_DAY).pack(side=tk.LEFT)
+        self._month_toggle_button(toggle, t, "Week", self._MONTH_VIEW_WEEK).pack(side=tk.LEFT, padx=(4, 0))
+
+        month_start = ctx["month_start"]
+        days_in_month = ctx["days_in_month"]
+        month_data = ctx["month_data"]
+        month_tokens = ctx["month_tokens"]
+
+        if self._month_view_mode == self._MONTH_VIEW_WEEK:
+            week_slots = ctx["week_slots"]
+
+            def _week_hover(i: int) -> dict:
+                slot = week_slots[i]
+                return {
+                    "label": slot["hover_label"],
+                    **slot["tokens"],
+                }
+
+            self._month_chart_redraw = self._bar_chart(
+                t,
+                [slot["pct"] for slot in week_slots],
+                label_fn=lambda i, slots=week_slots: slots[i]["label"] if i < len(slots) else "",
+                hover_fn=_week_hover,
+                token_data=[slot["tokens"] for slot in week_slots],
+                selected_index_fn=self._get_month_selected_index,
+                disabled_indices_fn=lambda slots=week_slots: {
+                    idx for idx, slot in enumerate(slots) if slot["disabled"]
+                },
+                on_click=lambda idx, slots=week_slots: self._set_selected_date(slots[idx]["selected_date"]),
+                parent=self._month_section_frame,
+            )
+        else:
+            month_disabled = {
+                i for i in range(days_in_month) if (month_start + timedelta(days=i)) > ctx["now"].date()
+            }
+
+            def _month_hover(i: int) -> dict:
+                d = month_tokens[i] if 0 <= i < len(month_tokens) else {}
+                day_date = month_start + timedelta(days=i)
+                return {
+                    "label": day_date.strftime("%d %b"),
+                    **d,
+                }
+
+            self._month_chart_redraw = self._bar_chart(
+                t,
+                month_data,
+                label_fn=lambda i, dm=days_in_month: str(i + 1) if (i == 0 or (i + 1) % 5 == 0) else "",
+                hover_fn=_month_hover,
+                token_data=month_tokens,
+                selected_index_fn=self._get_month_selected_index,
+                disabled_indices_fn=lambda: month_disabled,
+                on_click=lambda idx: self._set_selected_date(month_start + timedelta(days=idx)),
+                parent=self._month_section_frame,
+            )
+
+        extra = usage_history.get_extra_spend_current(self._current_email, _month_start(), ctx["now"])
+        if extra:
+            self._extra_spend_label_in(self._month_section_frame, t, "Extra spend this month: ", extra)
+        else:
+            self._dim_label(t, "No extra spending", parent=self._month_section_frame)
+
+    def _month_toggle_button(self, parent, t, text: str, mode: str) -> tk.Button:
+        is_selected = mode == self._month_view_mode
+        return tk.Button(
+            parent,
+            text=text,
+            bg=t.button_active_bg if is_selected else t.button_bg,
+            fg=t.button_fg,
+            activebackground=t.button_active_bg,
+            activeforeground=t.button_fg,
+            padx=6,
+            pady=1,
+            font=t.font_bold if is_selected else t.font,
+            cursor="hand2",
+            command=lambda m=mode: self._set_month_view_mode(m),
+            **t.button_style_kwargs(),
+        )
+
     def _get_week_selected_index(self) -> int | None:
         if self._selected_date is None:
             return None
@@ -435,6 +613,13 @@ class StatsPanel:
 
     def _get_month_selected_index(self) -> int | None:
         if self._selected_date is None:
+            return None
+        if self._month_view_mode == self._MONTH_VIEW_WEEK:
+            if self._month_chart_context is None:
+                return None
+            for idx, slot in enumerate(self._month_chart_context["week_slots"]):
+                if slot["start"] <= self._selected_date <= slot["end"]:
+                    return idx
             return None
         start = _month_start().date()
         days_in_month = calendar.monthrange(start.year, start.month)[1]

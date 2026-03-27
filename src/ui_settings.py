@@ -624,11 +624,5 @@ class SettingsMixin:
                 anchor="w",
             ).pack(fill=tk.X)
 
-        w, h = 340, 180
-        win.update_idletasks()
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        x = (sw - w) // 2
-        y = (sh - h) // 2
-        win.geometry(f"{w}x{h}+{x}+{y}")
+        self._position_beside_popup(win, 340, 180)
         win.focus_force()

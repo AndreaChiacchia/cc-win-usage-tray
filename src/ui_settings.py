@@ -615,7 +615,7 @@ class SettingsMixin:
             anchor="w",
         ).pack(fill=tk.X, pady=(0, 4))
 
-        for line in (f"Version {__version__}", "\u00a9 2025 Andrea Chiacchiaretta", "MIT License"):
+        for line in (f"Version {__version__}", "\u00a9 2026 Andrea Chiacchiaretta", "Apache License 2.0"):
             tk.Label(
                 inner,
                 text=line,
@@ -624,5 +624,11 @@ class SettingsMixin:
                 anchor="w",
             ).pack(fill=tk.X)
 
-        self._position_beside_popup(win, 340, 180)
+        w, h = 340, 180
+        win.update_idletasks()
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
         win.focus_force()

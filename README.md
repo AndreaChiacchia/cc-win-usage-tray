@@ -2,7 +2,7 @@
 
 A Windows app that monitors [Claude Code](https://claude.ai/code) usage and shows session, weekly, and extra token budgets in a compact themed popup with alerts when thresholds are crossed.
 
-![version](https://img.shields.io/badge/version-v1.9.0-blue)
+![version](https://img.shields.io/badge/version-v1.10.0-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
@@ -17,7 +17,8 @@ A Windows app that monitors [Claude Code](https://claude.ai/code) usage and show
 - **Theming** - built-in themes let you customize the popup appearance
 - **Threshold notifications** - Windows toasts when usage crosses configurable limits
 - **Multi-account tracking** - keeps usage data for multiple Claude accounts and surfaces the active one first
-- **Historical stats** - charts and token breakdowns to inspect recent usage trends
+- **Historical stats** - charts and token breakdowns to inspect recent usage trends, with peak-hour annotation
+- **Peak times indicator** - configurable peak window shown in the bottom bar and highlighted on stats charts
 - **Built for Claude Code CLI** - uses a PTY-based runner to fetch and parse live usage output automatically
 
 ---

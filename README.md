@@ -2,7 +2,7 @@
 
 A Windows app that monitors [Claude Code](https://claude.ai/code) usage and shows session, weekly, and extra token budgets in a compact themed popup with alerts when thresholds are crossed.
 
-![version](https://img.shields.io/badge/version-v1.10.0-blue)
+![version](https://img.shields.io/badge/version-v1.10.1-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)

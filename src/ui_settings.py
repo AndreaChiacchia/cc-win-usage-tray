@@ -5,6 +5,7 @@ import tkinter as tk
 import theme as theme_mod
 import settings as settings_mod
 from config import POPUP_PADDING
+from version import __version__
 
 
 class SettingsMixin:
@@ -513,4 +514,115 @@ class SettingsMixin:
 
         win_h = scroll_height + POPUP_PADDING * 4 + 60
         self._position_beside_popup(win, CARD_W + POPUP_PADDING * 2 + 20, win_h)
+        win.focus_force()
+
+    def _open_peak_settings(self):
+        t = theme_mod.current()
+        result = self._make_settings_window("peak_times", "Peak Times")
+        if result is None:
+            return
+        win, inner, _close = result
+
+        tk.Label(
+            inner,
+            text="Peak hours (local time)",
+            bg=t.bg, fg=t.fg_dim,
+            font=t.font,
+            anchor="w",
+        ).pack(fill=tk.X)
+
+        preview_label = tk.Label(
+            inner,
+            text="",
+            bg=t.bg, fg=t.fg,
+            font=t.font_bold,
+            anchor="w",
+        )
+        preview_label.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 4))
+
+        def _update_preview(v=None):
+            s = int(start_scale.get())
+            e = int(end_scale.get())
+            preview_label.configure(text=f"{s:02d}:00 \u2013 {e:02d}:00")
+
+        tk.Label(inner, text="Start hour", bg=t.bg, fg=t.fg, font=t.font, anchor="w").pack(fill=tk.X)
+        start_scale = tk.Scale(
+            inner,
+            from_=0, to=23, resolution=1,
+            orient=tk.HORIZONTAL,
+            command=_update_preview,
+            bg=t.bg, fg=t.fg,
+            troughcolor=t.bar_bg,
+            activebackground=t.button_active_bg,
+            highlightthickness=0,
+            font=t.font,
+            showvalue=True,
+            **t.scale_style_kwargs(),
+        )
+        start_scale.set(settings_mod.get_peak_start())
+        start_scale.pack(fill=tk.X)
+
+        tk.Label(inner, text="End hour", bg=t.bg, fg=t.fg, font=t.font, anchor="w").pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
+        end_scale = tk.Scale(
+            inner,
+            from_=0, to=23, resolution=1,
+            orient=tk.HORIZONTAL,
+            command=_update_preview,
+            bg=t.bg, fg=t.fg,
+            troughcolor=t.bar_bg,
+            activebackground=t.button_active_bg,
+            highlightthickness=0,
+            font=t.font,
+            showvalue=True,
+            **t.scale_style_kwargs(),
+        )
+        end_scale.set(settings_mod.get_peak_end())
+        end_scale.pack(fill=tk.X)
+
+        def _apply():
+            settings_mod.set_peak_start(int(start_scale.get()))
+            settings_mod.set_peak_end(int(end_scale.get()))
+            self._update_peak_indicator()
+
+        tk.Button(
+            inner,
+            text="Apply",
+            bg=t.button_bg, fg=t.button_fg,
+            activebackground=t.button_active_bg, activeforeground=t.button_fg,
+            padx=16, pady=4,
+            font=t.font,
+            cursor="hand2",
+            command=_apply,
+            **t.button_style_kwargs(),
+        ).pack(side=tk.RIGHT, pady=(POPUP_PADDING // 2, 0))
+
+        _update_preview()
+        self._position_beside_popup(win, 380, 340)
+        win.focus_force()
+
+    def _open_about(self):
+        t = theme_mod.current()
+        result = self._make_settings_window("about", "About")
+        if result is None:
+            return
+        win, inner, _close = result
+
+        tk.Label(
+            inner,
+            text="Claude Usage Tray",
+            bg=t.bg, fg=t.fg,
+            font=t.font_bold,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 4))
+
+        for line in (f"Version {__version__}", "\u00a9 2025 Andrea Chiacchiaretta", "MIT License"):
+            tk.Label(
+                inner,
+                text=line,
+                bg=t.bg, fg=t.fg_dim,
+                font=t.font,
+                anchor="w",
+            ).pack(fill=tk.X)
+
+        self._position_beside_popup(win, 340, 180)
         win.focus_force()

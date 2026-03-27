@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta
 
 import settings as settings_mod
 import theme as theme_mod
+import time_utils
 import token_history
 import usage_history
 from config import (
@@ -486,6 +487,9 @@ class StatsPanel:
                 **d,
             }
 
+        peak_hours = time_utils.peak_local_hours(
+            settings_mod.get_peak_start(), settings_mod.get_peak_end()
+        )
         self._selected_day_redraw = self._bar_chart(
             t,
             hourly_data,
@@ -493,6 +497,7 @@ class StatsPanel:
             hover_fn=_hour_hover,
             token_data=hourly_tokens,
             selected_index_fn=self._get_selected_hour_index,
+            highlight_indices_fn=lambda h=peak_hours: h,
             parent=self._selected_day_frame,
         )
 
@@ -752,6 +757,7 @@ class StatsPanel:
         token_data=None,
         selected_index_fn=None,
         disabled_indices_fn=None,
+        highlight_indices_fn=None,
         on_click=None,
         parent=None,
     ):
@@ -785,6 +791,7 @@ class StatsPanel:
 
             selected_index = selected_index_fn() if selected_index_fn is not None else None
             disabled_indices = disabled_indices_fn() if disabled_indices_fn is not None else set()
+            peak_indices = highlight_indices_fn() if highlight_indices_fn is not None else set()
 
             bar_area_h = STATS_BAR_MAX_HEIGHT
             label_h = STATS_CHART_HEIGHT - bar_area_h
@@ -890,6 +897,26 @@ class StatsPanel:
                         font=lbl_font,
                         anchor="center",
                     )
+
+            if peak_indices and bar_bounds:
+                sorted_peak = sorted(i for i in peak_indices if 0 <= i < len(bar_bounds))
+                if sorted_peak:
+                    runs = []
+                    run_start = sorted_peak[0]
+                    prev = run_start
+                    for idx in sorted_peak[1:]:
+                        if idx == prev + 1:
+                            prev = idx
+                        else:
+                            runs.append((run_start, prev))
+                            run_start = idx
+                            prev = idx
+                    runs.append((run_start, prev))
+                    line_y = top_h + bar_area_h + 2
+                    for rs, re in runs:
+                        lx1 = bar_bounds[rs][0]
+                        lx2 = bar_bounds[re][1]
+                        canvas.create_rectangle(lx1, line_y, lx2, line_y + 2, fill=t.peak_zone, outline="")
 
         def _on_motion(event):
             if hover_fn is None or not bar_bounds:

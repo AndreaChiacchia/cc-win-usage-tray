@@ -1,11 +1,15 @@
 """User settings persistence for Claude Usage Tray."""
 import json
 import os
+from datetime import datetime, timezone
 
 from paths import SETTINGS_FILE
 _DEFAULT_REFRESH_MINUTES = 5
 _DEFAULT_THRESHOLD = 10
 _DEFAULT_STATS_BAR_MODE = "fill"
+
+_default_peak_start = datetime(2000, 1, 1, 13, tzinfo=timezone.utc).astimezone().hour
+_default_peak_end = datetime(2000, 1, 1, 19, tzinfo=timezone.utc).astimezone().hour
 
 
 def load_settings() -> dict:
@@ -173,4 +177,28 @@ def set_always_on_top(enabled: bool):
     s = load_settings()
     g = s.setdefault("_global", {})
     g["always_on_top"] = enabled
+    save_settings(s)
+
+
+def get_peak_start() -> int:
+    s = load_settings()
+    return s.get("_global", {}).get("peak_start", _default_peak_start)
+
+
+def set_peak_start(val: int):
+    val = max(0, min(23, int(val)))
+    s = load_settings()
+    s.setdefault("_global", {})["peak_start"] = val
+    save_settings(s)
+
+
+def get_peak_end() -> int:
+    s = load_settings()
+    return s.get("_global", {}).get("peak_end", _default_peak_end)
+
+
+def set_peak_end(val: int):
+    val = max(0, min(23, int(val)))
+    s = load_settings()
+    s.setdefault("_global", {})["peak_end"] = val
     save_settings(s)

@@ -102,17 +102,26 @@ class ClaudeUsageTray:
             pystray.MenuItem("Show Usage", self._show_usage_menu),
             pystray.MenuItem("Refresh Now", self._refresh_menu),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Start on Windows startup", self._toggle_startup,
-                             checked=lambda item: is_startup_enabled()),
+            pystray.MenuItem("Themes", self._open_themes_menu),
+            pystray.MenuItem("Peak Times", self._open_peak_times_menu),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Always on top", self._toggle_always_on_top,
                              checked=lambda item: settings_mod.get_always_on_top()),
-            pystray.MenuItem("Themes", self._open_themes_menu),
+            pystray.MenuItem("Start on Windows startup", self._toggle_startup,
+                             checked=lambda item: is_startup_enabled()),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("About", self._open_about_menu),
             pystray.MenuItem("Quit", self._quit),
         )
 
     def _open_themes_menu(self):
         self.root.after(0, self.popup._open_theme_selector)
+
+    def _open_peak_times_menu(self, icon=None, item=None):
+        self.root.after(0, self.popup._open_peak_settings)
+
+    def _open_about_menu(self, icon=None, item=None):
+        self.root.after(0, self.popup._open_about)
 
     def _start_tray(self):
         icon_img = generate_loading_icon()

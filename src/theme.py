@@ -60,6 +60,8 @@ class Theme:
     font_size_bold: int
     # Widget style preset
     widget_style: str = "flat"
+    # Peak zone highlight color
+    peak_zone: str = "#b08040"
 
     @property
     def font(self) -> tuple:
@@ -109,6 +111,7 @@ CLAUDE_CODE = Theme(
     font_size=10,
     font_size_bold=11,
     widget_style="flat",
+    peak_zone="#b08040",
 )
 
 TERMINAL = Theme(
@@ -130,6 +133,7 @@ TERMINAL = Theme(
     font_size=10,
     font_size_bold=11,
     widget_style="flat",
+    peak_zone="#cc8800",
 )
 
 DRACULA = Theme(
@@ -151,6 +155,7 @@ DRACULA = Theme(
     font_size=10,
     font_size_bold=11,
     widget_style="flat",
+    peak_zone="#ffb86c",
 )
 
 LIGHT = Theme(
@@ -172,6 +177,7 @@ LIGHT = Theme(
     font_size=10,
     font_size_bold=11,
     widget_style="flat",
+    peak_zone="#c47a20",
 )
 
 SOLARIZED_DARK = Theme(
@@ -193,6 +199,7 @@ SOLARIZED_DARK = Theme(
     font_size=10,
     font_size_bold=11,
     widget_style="flat",
+    peak_zone="#b58900",
 )
 
 HIGH_CONTRAST = Theme(
@@ -214,6 +221,7 @@ HIGH_CONTRAST = Theme(
     font_size=10,
     font_size_bold=11,
     widget_style="flat",
+    peak_zone="#ffaa00",
 )
 
 BUILTIN_THEMES: dict[str, Theme] = {
@@ -308,6 +316,7 @@ def load_custom_theme(path: str) -> Theme:
         font_size=int(data["font_size"]),
         font_size_bold=int(data["font_size_bold"]),
         widget_style=data.get("widget_style", "flat"),
+        peak_zone=data.get("peak_zone", "#b08040"),
     )
 
 

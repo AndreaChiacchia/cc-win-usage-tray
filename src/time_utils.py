@@ -4,6 +4,27 @@ import re
 from datetime import datetime, date, timedelta
 
 
+def is_peak_time(start_local: int, end_local: int) -> bool:
+    """Return True if the current local hour is within the peak window."""
+    if start_local == end_local:
+        return False
+    hour = datetime.now().hour
+    if start_local < end_local:
+        return start_local <= hour < end_local
+    # midnight wrap
+    return hour >= start_local or hour < end_local
+
+
+def peak_local_hours(start_local: int, end_local: int) -> set:
+    """Return the set of local hours (0-23) that fall within the peak window."""
+    if start_local == end_local:
+        return set()
+    if start_local < end_local:
+        return set(range(start_local, end_local))
+    # midnight wrap
+    return set(range(start_local, 24)) | set(range(0, end_local))
+
+
 def format_last_sync_relative(iso_timestamp: str) -> str:
     """Return a human-readable relative sync time, e.g. 'Synced 5 min ago'."""
     try:

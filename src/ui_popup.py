@@ -8,7 +8,6 @@ from datetime import datetime
 import settings as settings_mod
 import theme as theme_mod
 import time_utils
-from version import __version__
 import pace_delta as pace_delta_mod
 from config import (
     POPUP_WIDTH, POPUP_PADDING, TASKBAR_OFFSET, BAR_HEIGHT,
@@ -157,13 +156,12 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
         self._bottom = tk.Frame(self._inner, bg=t.bg)
         self._bottom.pack(fill=tk.X, pady=(POPUP_PADDING // 2, 0))
 
-        self._version_label = tk.Label(
-            self._bottom,
-            text=f"v{__version__}",
+        self._peak_label = tk.Label(
+            self._bottom, text="",
             bg=t.bg, fg=t.fg_dim,
             font=t.font,
         )
-        self._version_label.pack(side=tk.LEFT)
+        self._peak_label.pack(side=tk.LEFT)
 
         self._refresh_btn = tk.Button(
             self._bottom,
@@ -185,6 +183,16 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
 
         self._stats_panel = StatsPanel(root, self.win)
 
+    def _update_peak_indicator(self):
+        """Update the peak/off-peak label in the bottom bar."""
+        t = theme_mod.current()
+        start = settings_mod.get_peak_start()
+        end = settings_mod.get_peak_end()
+        if time_utils.is_peak_time(start, end):
+            self._peak_label.configure(text="\u00b7 Peak", fg=t.peak_zone)
+        else:
+            self._peak_label.configure(text="\u00b7 Off-peak", fg=t.fg_dim)
+
     def apply_theme(self):
         """Reconfigure persistent chrome widgets to the current theme."""
         t = theme_mod.current()
@@ -204,7 +212,7 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
         self._sb_canvas.configure(bg=t.bar_bg)
         self._content_frame.configure(bg=t.bg)
         self._bottom.configure(bg=t.bg)
-        self._version_label.configure(bg=t.bg, fg=t.fg_dim, font=t.font)
+        self._peak_label.configure(bg=t.bg, font=t.font)
         self._refresh_btn.configure(
             bg=t.button_bg, fg=t.button_fg,
             activebackground=t.button_active_bg, activeforeground=t.button_fg,
@@ -213,6 +221,7 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
         )
         if self._sb_canvas.winfo_width() > 0:
             self._update_scroll_sb(*self._scroll_canvas.yview())
+        self._update_peak_indicator()
         self._stats_panel.apply_theme()
 
     def _clear_content(self):
@@ -496,6 +505,7 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
             tk.Frame(self._content_frame, bg=t.border, height=1).pack(fill=tk.X, pady=(20, 12))
 
         self._refresh_btn.configure(state=tk.NORMAL)
+        self._update_peak_indicator()
         self._reposition_and_resize()
 
     # ------------------------------------------------------------------
@@ -787,6 +797,7 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
         else:
             self.win.attributes("-topmost", self._always_on_top)
         self._visible = True
+        self._update_peak_indicator()
         self._refresh_sync_labels()
         self._start_relative_timer()
         self._start_screen_check()

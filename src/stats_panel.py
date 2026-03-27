@@ -18,6 +18,7 @@ import time
 import tkinter as tk
 from datetime import date, datetime, timedelta
 
+import settings as settings_mod
 import theme as theme_mod
 import token_history
 import usage_history
@@ -37,6 +38,9 @@ from config import (
 )
 from format_utils import fmt_tokens
 from token_detail_panel import TokenDetailPanel
+
+_STATS_BAR_MODE_FILL = "fill"
+_STATS_BAR_MODE_COLOR = "color"
 
 
 def _bar_color(pct: int) -> str:
@@ -62,6 +66,34 @@ def _blend_color(color: str, bg: str, blend: float) -> str:
     g = round(cg * (1.0 - blend) + bgc * blend)
     b = round(cb * (1.0 - blend) + bb * blend)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _chart_max_value(data: list[int], disabled_indices: set[int] | None = None) -> int:
+    disabled = disabled_indices or set()
+    return max((v for i, v in enumerate(data) if i not in disabled), default=0) or 100
+
+
+def _normalize_chart_value(pct: int, max_val: int) -> int:
+    if max_val <= 0:
+        return 0
+    return max(0, min(100, int(pct / max_val * 100)))
+
+
+def _chart_bar_fill(
+    base_color: str,
+    track_color: str,
+    bg_color: str,
+    normalized_pct: int,
+    mode: str,
+    disabled: bool = False,
+) -> str:
+    if disabled:
+        return _blend_color(base_color, bg_color, 0.45)
+    if mode == _STATS_BAR_MODE_COLOR:
+        muted_track = _blend_color(track_color, bg_color, 0.2)
+        blend = 0.9 - (0.9 * (max(0, min(100, normalized_pct)) / 100.0))
+        return _blend_color(base_color, muted_track, blend)
+    return base_color
 
 
 def _week_start() -> datetime:
@@ -154,6 +186,8 @@ class StatsPanel:
     _PINNED = "pinned"
     _MONTH_VIEW_DAY = "day"
     _MONTH_VIEW_WEEK = "week"
+    _CHART_MODE_FILL = _STATS_BAR_MODE_FILL
+    _CHART_MODE_COLOR = _STATS_BAR_MODE_COLOR
 
     def __init__(self, root: tk.Tk, popup_win: tk.Toplevel):
         self.root = root
@@ -169,6 +203,7 @@ class StatsPanel:
         self._month_section_frame: tk.Frame | None = None
         self._month_chart_context: dict | None = None
         self._month_view_mode = self._MONTH_VIEW_DAY
+        self._chart_mode = settings_mod.get_stats_bar_mode()
 
         # Pin animation state
         self._pin_anim_id: str | None = None
@@ -324,6 +359,11 @@ class StatsPanel:
                 command=self.force_hide,
                 **t.button_style_kwargs(),
             ).pack(side=tk.RIGHT)
+        if email is not None:
+            toggle = tk.Frame(header_row, bg=t.bg)
+            toggle.pack(side=tk.RIGHT, padx=(0, 8 if self._state == self._PINNED else 0))
+            self._chart_mode_button(toggle, t, "Fill", self._CHART_MODE_FILL).pack(side=tk.LEFT)
+            self._chart_mode_button(toggle, t, "Color", self._CHART_MODE_COLOR).pack(side=tk.LEFT, padx=(4, 0))
 
         if email is None:
             return
@@ -504,6 +544,18 @@ class StatsPanel:
         self._token_panel.force_hide()
         self._render_month_section()
 
+    def _set_chart_mode(self, mode: str) -> None:
+        if mode not in {self._CHART_MODE_FILL, self._CHART_MODE_COLOR}:
+            return
+        if mode == self._chart_mode:
+            return
+        self._chart_mode = mode
+        settings_mod.set_stats_bar_mode(mode)
+        self._token_panel.force_hide()
+        if self._state != self._HIDDEN:
+            self._rebuild_content()
+            self._position_panel()
+
     def _render_month_section(self) -> None:
         if self._month_section_frame is None or self._month_chart_context is None:
             return
@@ -590,7 +642,24 @@ class StatsPanel:
             self._dim_label(t, "No extra spending", parent=self._month_section_frame)
 
     def _month_toggle_button(self, parent, t, text: str, mode: str) -> tk.Button:
-        is_selected = mode == self._month_view_mode
+        return self._segmented_toggle_button(
+            parent,
+            t,
+            text,
+            mode == self._month_view_mode,
+            lambda m=mode: self._set_month_view_mode(m),
+        )
+
+    def _chart_mode_button(self, parent, t, text: str, mode: str) -> tk.Button:
+        return self._segmented_toggle_button(
+            parent,
+            t,
+            text,
+            mode == self._chart_mode,
+            lambda m=mode: self._set_chart_mode(m),
+        )
+
+    def _segmented_toggle_button(self, parent, t, text: str, is_selected: bool, command) -> tk.Button:
         return tk.Button(
             parent,
             text=text,
@@ -602,7 +671,7 @@ class StatsPanel:
             pady=1,
             font=t.font_bold if is_selected else t.font,
             cursor="hand2",
-            command=lambda m=mode: self._set_month_view_mode(m),
+            command=command,
             **t.button_style_kwargs(),
         )
 
@@ -747,7 +816,7 @@ class StatsPanel:
             else:
                 show_label = set()
 
-            max_val = max((v for i, v in enumerate(data) if i not in disabled_indices), default=0) or 100
+            max_val = _chart_max_value(data, disabled_indices)
 
             for i, pct in enumerate(data):
                 x1 = gap + i * (bar_w + gap)
@@ -758,12 +827,22 @@ class StatsPanel:
 
                 track_fill = _blend_color(t.bar_bg, t.bg, 0.35) if is_disabled else t.bar_bg
                 canvas.create_rectangle(x1, top_h, x2, top_h + bar_area_h, fill=track_fill, outline="")
+                normalized = _normalize_chart_value(pct, max_val)
+                base_color = _bar_color(normalized)
+                fill = _chart_bar_fill(
+                    base_color,
+                    t.bar_bg,
+                    t.bg,
+                    normalized,
+                    self._chart_mode,
+                    disabled=is_disabled,
+                )
 
-                if pct > 0:
+                if self._chart_mode == self._CHART_MODE_COLOR and not is_disabled:
+                    canvas.create_rectangle(x1, top_h, x2, top_h + bar_area_h, fill=fill, outline="")
+                elif pct > 0:
                     bh = max(STATS_BAR_MIN_HEIGHT, int(pct / max_val * bar_area_h))
                     y1 = top_h + bar_area_h - bh
-                    normalized = int(pct / max_val * 100) if max_val else 0
-                    fill = _blend_color(_bar_color(normalized), t.bg, 0.45) if is_disabled else _bar_color(normalized)
                     canvas.create_rectangle(x1, y1, x2, top_h + bar_area_h, fill=fill, outline="")
 
                 if is_selected:

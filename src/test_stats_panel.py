@@ -1,7 +1,14 @@
 import unittest
 from datetime import date
+from unittest.mock import patch
 
-from stats_panel import _build_month_week_slots
+import settings as settings_mod
+from stats_panel import (
+    _build_month_week_slots,
+    _chart_bar_fill,
+    _chart_max_value,
+    _normalize_chart_value,
+)
 
 
 def _token_slot(input_tokens: int, output_tokens: int = 0, cache_read: int = 0, cache_creation: int = 0) -> dict:
@@ -75,6 +82,85 @@ class BuildMonthWeekSlotsTests(unittest.TestCase):
         self.assertEqual(0, future_week["pct"])
         self.assertEqual(0, future_week["tokens"]["input"])
         self.assertIsNone(future_week["selected_date"])
+
+
+class ChartBarModeTests(unittest.TestCase):
+    def test_color_mode_uses_vivid_color_at_max_value(self):
+        fill = _chart_bar_fill("#10b981", "#2d2d2d", "#1e1e1e", 100, "color")
+        self.assertEqual("#10b981", fill)
+
+    def test_color_mode_dims_mid_value(self):
+        fill = _chart_bar_fill("#10b981", "#2d2d2d", "#1e1e1e", 50, "color")
+        self.assertEqual("#1c795a", fill)
+
+    def test_color_mode_renders_zero_as_faint_full_bar(self):
+        fill = _chart_bar_fill("#10b981", "#2d2d2d", "#1e1e1e", 0, "color")
+        self.assertEqual("#273833", fill)
+
+    def test_disabled_slots_keep_existing_disabled_treatment(self):
+        fill = _chart_bar_fill("#10b981", "#2d2d2d", "#1e1e1e", 50, "color", disabled=True)
+        self.assertEqual("#167354", fill)
+
+    def test_hourly_chart_normalization_stays_local_to_chart_max(self):
+        data = [0] * 24
+        data[10] = 6
+        data[11] = 12
+
+        max_val = _chart_max_value(data)
+
+        self.assertEqual(12, max_val)
+        self.assertEqual(50, _normalize_chart_value(data[10], max_val))
+        self.assertEqual(100, _normalize_chart_value(data[11], max_val))
+
+    def test_weekly_chart_normalization_ignores_disabled_future_slots(self):
+        data = [12, 20, 40, 10, 8, 99, 99]
+        disabled = {5, 6}
+
+        max_val = _chart_max_value(data, disabled)
+
+        self.assertEqual(40, max_val)
+        self.assertEqual(50, _normalize_chart_value(data[1], max_val))
+        self.assertEqual(100, _normalize_chart_value(data[2], max_val))
+
+    def test_monthly_chart_normalization_stays_local_to_visible_data(self):
+        data = [0] * 31
+        data[4] = 40
+        data[9] = 80
+        data[30] = 99
+        disabled = {30}
+
+        max_val = _chart_max_value(data, disabled)
+
+        self.assertEqual(80, max_val)
+        self.assertEqual(50, _normalize_chart_value(data[4], max_val))
+        self.assertEqual(100, _normalize_chart_value(data[9], max_val))
+
+
+class StatsBarModeSettingsTests(unittest.TestCase):
+    def test_defaults_to_fill_when_setting_is_missing(self):
+        with patch.object(settings_mod, "load_settings", return_value={}):
+            self.assertEqual("fill", settings_mod.get_stats_bar_mode())
+
+    def test_persists_and_reloads_chart_mode(self):
+        store = {}
+
+        def fake_load_settings():
+            return {
+                key: value.copy() if isinstance(value, dict) else value
+                for key, value in store.items()
+            }
+
+        def fake_save_settings(settings: dict):
+            store.clear()
+            store.update({
+                key: value.copy() if isinstance(value, dict) else value
+                for key, value in settings.items()
+            })
+
+        with patch.object(settings_mod, "load_settings", side_effect=fake_load_settings):
+            with patch.object(settings_mod, "save_settings", side_effect=fake_save_settings):
+                settings_mod.set_stats_bar_mode("color")
+                self.assertEqual("color", settings_mod.get_stats_bar_mode())
 
 
 if __name__ == "__main__":

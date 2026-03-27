@@ -5,6 +5,7 @@ import os
 from paths import SETTINGS_FILE
 _DEFAULT_REFRESH_MINUTES = 5
 _DEFAULT_THRESHOLD = 10
+_DEFAULT_STATS_BAR_MODE = "fill"
 
 
 def load_settings() -> dict:
@@ -105,6 +106,19 @@ def get_theme_name() -> str:
 def set_theme_name(name: str):
     s = load_settings()
     s.setdefault("_global", {})["theme"] = name
+    save_settings(s)
+
+
+def get_stats_bar_mode() -> str:
+    s = load_settings()
+    mode = s.get("_global", {}).get("stats_bar_mode", _DEFAULT_STATS_BAR_MODE)
+    return mode if mode in {"fill", "color"} else _DEFAULT_STATS_BAR_MODE
+
+
+def set_stats_bar_mode(mode: str):
+    normalized = mode if mode in {"fill", "color"} else _DEFAULT_STATS_BAR_MODE
+    s = load_settings()
+    s.setdefault("_global", {})["stats_bar_mode"] = normalized
     save_settings(s)
 
 

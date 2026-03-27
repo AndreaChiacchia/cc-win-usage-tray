@@ -1,13 +1,20 @@
 import unittest
 from datetime import date
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import settings as settings_mod
 from stats_panel import (
+    StatsPanel,
     _build_month_week_slots,
     _chart_bar_fill,
     _chart_max_value,
+    _is_current_week,
     _normalize_chart_value,
+    _peak_day_for_week,
+    _week_disabled_indices,
+    _week_start_for,
+    _week_title,
 )
 
 
@@ -82,6 +89,121 @@ class BuildMonthWeekSlotsTests(unittest.TestCase):
         self.assertEqual(0, future_week["pct"])
         self.assertEqual(0, future_week["tokens"]["input"])
         self.assertIsNone(future_week["selected_date"])
+
+
+class SelectedWeekHelperTests(unittest.TestCase):
+    def test_week_start_for_current_week_day(self):
+        self.assertEqual(date(2026, 3, 23), _week_start_for(date(2026, 3, 26)))
+
+    def test_week_start_for_past_week_day(self):
+        self.assertEqual(date(2026, 3, 16), _week_start_for(date(2026, 3, 18)))
+
+    def test_week_title_uses_this_week_for_current_week(self):
+        today = date(2026, 3, 26)
+        self.assertEqual("This Week", _week_title(today, today))
+
+    def test_week_title_uses_explicit_range_for_past_week(self):
+        self.assertEqual("16 Mar - 22 Mar", _week_title(date(2026, 3, 18), date(2026, 3, 26)))
+
+    def test_week_disabled_indices_only_apply_to_current_week(self):
+        self.assertEqual({4, 5, 6}, _week_disabled_indices(date(2026, 3, 23), date(2026, 3, 26)))
+        self.assertEqual(set(), _week_disabled_indices(date(2026, 3, 16), date(2026, 3, 26)))
+
+    def test_is_current_week_detects_matching_calendar_week(self):
+        self.assertTrue(_is_current_week(date(2026, 3, 24), date(2026, 3, 26)))
+        self.assertFalse(_is_current_week(date(2026, 3, 18), date(2026, 3, 26)))
+
+    def test_peak_day_for_week_uses_unique_max(self):
+        self.assertEqual(
+            date(2026, 3, 18),
+            _peak_day_for_week(date(2026, 3, 16), [10, 20, 80, 15, 5, 0, 0], date(2026, 3, 26)),
+        )
+
+    def test_peak_day_for_week_uses_latest_day_on_tie(self):
+        self.assertEqual(
+            date(2026, 3, 19),
+            _peak_day_for_week(date(2026, 3, 16), [10, 50, 20, 50, 5, 0, 0], date(2026, 3, 26)),
+        )
+
+    def test_peak_day_for_week_uses_latest_day_when_all_zero(self):
+        self.assertEqual(
+            date(2026, 3, 22),
+            _peak_day_for_week(date(2026, 3, 16), [0, 0, 0, 0, 0, 0, 0], date(2026, 3, 26)),
+        )
+
+
+class StatsPanelSelectionTests(unittest.TestCase):
+    def test_week_selected_index_uses_displayed_week_context(self):
+        panel = StatsPanel.__new__(StatsPanel)
+        panel._selected_date = date(2026, 3, 18)
+        panel._week_chart_context = {"week_start": date(2026, 3, 16)}
+
+        self.assertEqual(2, panel._get_week_selected_index())
+
+    def test_set_selected_date_rerenders_selected_day_and_week_sections(self):
+        panel = StatsPanel.__new__(StatsPanel)
+        panel._current_email = "test@example.com"
+        panel._selected_date = date(2026, 3, 26)
+        panel._render_selected_day_section = Mock()
+        panel._render_week_section = Mock()
+        panel._month_chart_redraw = Mock()
+        panel._build_week_chart_context = Mock(return_value={"week_start": date(2026, 3, 16)})
+
+        with patch("stats_panel._now", return_value=Mock(date=Mock(return_value=date(2026, 3, 26)))):
+            panel._set_selected_date(date(2026, 3, 18))
+
+        self.assertEqual(date(2026, 3, 18), panel._selected_date)
+        panel._render_selected_day_section.assert_called_once_with("test@example.com")
+        panel._build_week_chart_context.assert_called_once()
+        panel._render_week_section.assert_called_once_with()
+        panel._month_chart_redraw.assert_called_once_with()
+
+    def test_resolve_month_selection_date_uses_peak_day_for_past_week(self):
+        panel = StatsPanel.__new__(StatsPanel)
+        panel._current_email = "test@example.com"
+        panel._selected_date = date(2026, 3, 26)
+
+        with patch("stats_panel._now", return_value=Mock(date=Mock(return_value=date(2026, 3, 26)))):
+            with patch("stats_panel.usage_history.get_daily_delta", return_value=[10, 60, 15, 80, 40, 0, 0]) as daily_delta:
+                resolved = panel._resolve_month_selection_date(date(2026, 3, 18))
+
+        self.assertEqual(date(2026, 3, 19), resolved)
+        daily_delta.assert_called_once_with("test@example.com", date(2026, 3, 16), 7, "Current week")
+
+    def test_resolve_month_selection_date_uses_latest_peak_day_for_ties(self):
+        panel = StatsPanel.__new__(StatsPanel)
+        panel._current_email = "test@example.com"
+        panel._selected_date = date(2026, 3, 26)
+
+        with patch("stats_panel._now", return_value=Mock(date=Mock(return_value=date(2026, 3, 26)))):
+            with patch("stats_panel.usage_history.get_daily_delta", return_value=[10, 80, 15, 80, 40, 0, 0]):
+                resolved = panel._resolve_month_selection_date(date(2026, 3, 18))
+
+        self.assertEqual(date(2026, 3, 19), resolved)
+
+    def test_resolve_month_selection_date_keeps_clicked_day_in_current_week(self):
+        panel = StatsPanel.__new__(StatsPanel)
+        panel._current_email = "test@example.com"
+        panel._selected_date = date(2026, 3, 26)
+
+        with patch("stats_panel._now", return_value=Mock(date=Mock(return_value=date(2026, 3, 26)))):
+            with patch("stats_panel.usage_history.get_daily_delta") as daily_delta:
+                resolved = panel._resolve_month_selection_date(date(2026, 3, 24))
+
+        self.assertEqual(date(2026, 3, 24), resolved)
+        daily_delta.assert_not_called()
+
+    def test_resolve_month_selection_date_keeps_clicked_day_within_same_past_week(self):
+        panel = StatsPanel.__new__(StatsPanel)
+        panel._current_email = "test@example.com"
+        panel._selected_date = date(2026, 3, 18)
+
+        with patch("stats_panel._now", return_value=Mock(date=Mock(return_value=date(2026, 3, 26)))):
+            with patch("stats_panel.usage_history.get_daily_delta") as daily_delta:
+                resolved = panel._resolve_month_selection_date(date(2026, 3, 17))
+
+        self.assertEqual(date(2026, 3, 17), resolved)
+        daily_delta.assert_not_called()
 
 
 class ChartBarModeTests(unittest.TestCase):

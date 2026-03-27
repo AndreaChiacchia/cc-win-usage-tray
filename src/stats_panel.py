@@ -113,6 +113,52 @@ def _empty_token_totals() -> dict:
     return {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
 
 
+def _week_start_for(value: date) -> date:
+    return value - timedelta(days=value.weekday())
+
+
+def _week_end_for(value: date) -> date:
+    return _week_start_for(value) + timedelta(days=6)
+
+
+def _week_title(selected_date: date, today: date) -> str:
+    week_start = _week_start_for(selected_date)
+    if week_start == _week_start_for(today):
+        return "This Week"
+    return _range_label(week_start, _week_end_for(selected_date))
+
+
+def _week_disabled_indices(week_start: date, today: date) -> set[int]:
+    if week_start != _week_start_for(today):
+        return set()
+    return {
+        i for i in range(7) if (week_start + timedelta(days=i)) > today
+    }
+
+
+def _is_current_week(value: date, today: date) -> bool:
+    return _week_start_for(value) == _week_start_for(today)
+
+
+def _peak_day_for_week(week_start: date, week_data: list[int], today: date) -> date:
+    valid_end = today if _is_current_week(week_start, today) else week_start + timedelta(days=6)
+    valid_indices = [
+        idx for idx in range(7)
+        if week_start + timedelta(days=idx) <= valid_end
+    ]
+    if not valid_indices:
+        return week_start
+
+    best_idx = valid_indices[0]
+    best_pct = week_data[best_idx] if best_idx < len(week_data) else 0
+    for idx in valid_indices[1:]:
+        pct = week_data[idx] if idx < len(week_data) else 0
+        if pct >= best_pct:
+            best_idx = idx
+            best_pct = pct
+    return week_start + timedelta(days=best_idx)
+
+
 def _date_label(value: date) -> str:
     return f"{value.day} {value.strftime('%b')}"
 
@@ -200,6 +246,8 @@ class StatsPanel:
         self._selected_day_frame: tk.Frame | None = None
         self._selected_day_redraw = None
         self._week_chart_redraw = None
+        self._week_section_frame: tk.Frame | None = None
+        self._week_chart_context: dict | None = None
         self._month_chart_redraw = None
         self._month_section_frame: tk.Frame | None = None
         self._month_chart_context: dict | None = None
@@ -331,6 +379,8 @@ class StatsPanel:
         self._selected_day_frame = None
         self._selected_day_redraw = None
         self._week_chart_redraw = None
+        self._week_section_frame = None
+        self._week_chart_context = None
         self._month_chart_redraw = None
         self._month_section_frame = None
         self._month_chart_context = None
@@ -374,10 +424,8 @@ class StatsPanel:
             self._selected_date = now.date()
 
         token_history.scan_blocking(email)
-        week_start = _week_start().date()
         month_start = _month_start().date()
         days_in_month = calendar.monthrange(now.year, now.month)[1]
-        week_tokens = token_history.get_daily_tokens(week_start, 7, email)
         month_tokens = token_history.get_daily_tokens(month_start, days_in_month, email)
 
         self._selected_day_frame = tk.Frame(self._content, bg=t.bg)
@@ -386,36 +434,10 @@ class StatsPanel:
 
         self._separator(t)
 
-        self._section_title(t, "This Week")
-        day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        week_data = usage_history.get_daily_delta(email, week_start, 7, "Current week")
-        week_disabled = {
-            i for i in range(7) if (week_start + timedelta(days=i)) > now.date()
-        }
-
-        def _week_hover(i: int) -> dict:
-            d = week_tokens[i] if 0 <= i < len(week_tokens) else {}
-            day_date = week_start + timedelta(days=i)
-            return {
-                "label": f"{day_abbrs[i]} {day_date.strftime('%d %b')}",
-                **d,
-            }
-
-        self._week_chart_redraw = self._bar_chart(
-            t,
-            week_data,
-            label_fn=lambda i: day_abbrs[i] if i < 7 else "",
-            hover_fn=_week_hover,
-            token_data=week_tokens,
-            selected_index_fn=self._get_week_selected_index,
-            disabled_indices_fn=lambda: week_disabled,
-            on_click=lambda idx: self._set_selected_date(week_start + timedelta(days=idx)),
-        )
-        extra = usage_history.get_extra_spend_delta(email, _week_start(), now)
-        if extra:
-            self._extra_spend_label(t, "Extra spend this week: ", extra)
-        else:
-            self._dim_label(t, "No extra spending")
+        self._week_chart_context = self._build_week_chart_context(email, now)
+        self._week_section_frame = tk.Frame(self._content, bg=t.bg)
+        self._week_section_frame.pack(fill=tk.X)
+        self._render_week_section()
 
         self._separator(t)
 
@@ -525,6 +547,96 @@ class StatsPanel:
             return None
         return now.hour
 
+    def _build_week_chart_context(self, email: str, now: datetime) -> dict:
+        selected_date = self._selected_date or now.date()
+        week_start = _week_start_for(selected_date)
+        return {
+            "email": email,
+            "now": now,
+            "selected_date": selected_date,
+            "week_start": week_start,
+            "week_end": week_start + timedelta(days=6),
+            "title": _week_title(selected_date, now.date()),
+            "week_data": usage_history.get_daily_delta(email, week_start, 7, "Current week"),
+            "week_tokens": token_history.get_daily_tokens(week_start, 7, email),
+            "week_disabled": _week_disabled_indices(week_start, now.date()),
+        }
+
+    def _render_week_section(self) -> None:
+        if self._week_section_frame is None or self._week_chart_context is None:
+            return
+
+        for widget in self._week_section_frame.winfo_children():
+            widget.destroy()
+
+        t = theme_mod.current()
+        ctx = self._week_chart_context
+        week_start = ctx["week_start"]
+        now = ctx["now"]
+        day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+        tk.Label(
+            self._week_section_frame,
+            text=ctx["title"],
+            bg=t.bg,
+            fg=t.fg,
+            font=t.font_bold,
+            anchor="w",
+        ).pack(fill=tk.X, pady=(0, 8))
+
+        def _week_hover(i: int) -> dict:
+            d = ctx["week_tokens"][i] if 0 <= i < len(ctx["week_tokens"]) else {}
+            day_date = week_start + timedelta(days=i)
+            return {
+                "label": f"{day_abbrs[i]} {day_date.strftime('%d %b')}",
+                **d,
+            }
+
+        self._week_chart_redraw = self._bar_chart(
+            t,
+            ctx["week_data"],
+            label_fn=lambda i: day_abbrs[i] if i < 7 else "",
+            hover_fn=_week_hover,
+            token_data=ctx["week_tokens"],
+            selected_index_fn=self._get_week_selected_index,
+            disabled_indices_fn=lambda: ctx["week_disabled"],
+            on_click=lambda idx: self._set_selected_date(week_start + timedelta(days=idx)),
+            parent=self._week_section_frame,
+        )
+
+        extra = self._selected_week_extra_spend(ctx["email"], week_start, now)
+        if extra:
+            if ctx["title"] == "This Week":
+                label_text = "Extra spend this week: "
+            else:
+                label_text = f"Extra spend for {ctx['title']}: "
+            self._extra_spend_label_in(self._week_section_frame, t, label_text, extra)
+        else:
+            self._dim_label(t, "No extra spending", parent=self._week_section_frame)
+
+    def _selected_week_extra_spend(self, email: str, week_start: date, now: datetime) -> str | None:
+        start = datetime.combine(week_start, datetime.min.time())
+        if week_start == _week_start_for(now.date()):
+            end = now
+        else:
+            end = start + timedelta(days=7) - timedelta(microseconds=1)
+        return usage_history.get_extra_spend_delta(email, start, end)
+
+    def _resolve_month_selection_date(self, target_date: date) -> date:
+        now = _now()
+        target_week = _week_start_for(target_date)
+        current_week = _week_start_for(self._selected_date) if self._selected_date is not None else None
+        if target_week == current_week or _is_current_week(target_date, now.date()):
+            return target_date
+
+        week_data = usage_history.get_daily_delta(
+            self._current_email,
+            target_week,
+            7,
+            "Current week",
+        )
+        return _peak_day_for_week(target_week, week_data, now.date())
+
     def _set_selected_date(self, selected_date: date) -> None:
         if self._current_email is None:
             return
@@ -535,8 +647,8 @@ class StatsPanel:
 
         self._selected_date = selected_date
         self._render_selected_day_section(self._current_email)
-        if self._week_chart_redraw is not None:
-            self._week_chart_redraw()
+        self._week_chart_context = self._build_week_chart_context(self._current_email, _now())
+        self._render_week_section()
         if self._month_chart_redraw is not None:
             self._month_chart_redraw()
 
@@ -612,7 +724,9 @@ class StatsPanel:
                 disabled_indices_fn=lambda slots=week_slots: {
                     idx for idx, slot in enumerate(slots) if slot["disabled"]
                 },
-                on_click=lambda idx, slots=week_slots: self._set_selected_date(slots[idx]["selected_date"]),
+                on_click=lambda idx, slots=week_slots: self._set_selected_date(
+                    self._resolve_month_selection_date(slots[idx]["selected_date"])
+                ),
                 parent=self._month_section_frame,
             )
         else:
@@ -636,7 +750,9 @@ class StatsPanel:
                 token_data=month_tokens,
                 selected_index_fn=self._get_month_selected_index,
                 disabled_indices_fn=lambda: month_disabled,
-                on_click=lambda idx: self._set_selected_date(month_start + timedelta(days=idx)),
+                on_click=lambda idx: self._set_selected_date(
+                    self._resolve_month_selection_date(month_start + timedelta(days=idx))
+                ),
                 parent=self._month_section_frame,
             )
 
@@ -681,9 +797,9 @@ class StatsPanel:
         )
 
     def _get_week_selected_index(self) -> int | None:
-        if self._selected_date is None:
+        if self._selected_date is None or self._week_chart_context is None:
             return None
-        start = _week_start().date()
+        start = self._week_chart_context["week_start"]
         idx = (self._selected_date - start).days
         return idx if 0 <= idx < 7 else None
 

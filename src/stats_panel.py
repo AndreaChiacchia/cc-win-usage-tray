@@ -347,7 +347,7 @@ class StatsPanel:
 
         self._section_title(t, "This Week")
         day_abbrs = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        week_data = usage_history.get_daily_avg(email, week_start, 7)
+        week_data = usage_history.get_daily_delta(email, week_start, 7, "Current week")
         week_disabled = {
             i for i in range(7) if (week_start + timedelta(days=i)) > now.date()
         }
@@ -378,7 +378,7 @@ class StatsPanel:
 
         self._separator(t)
 
-        month_data = usage_history.get_daily_avg(email, month_start, days_in_month)
+        month_data = usage_history.get_daily_delta(email, month_start, days_in_month, "Current week")
         self._month_chart_context = {
             "email": email,
             "now": now,
@@ -436,7 +436,7 @@ class StatsPanel:
             anchor="w",
         ).pack(fill=tk.X, pady=(0, 8))
 
-        hourly_data = usage_history.get_hourly_avg(email, selected_date)
+        hourly_data = usage_history.get_hourly_delta(email, selected_date, "Current session")
         hourly_tokens = token_history.get_hourly_tokens(selected_date, email)
 
         def _hour_hover(i: int) -> dict:
@@ -735,8 +735,19 @@ class StatsPanel:
                             best_idx = idx
                     if best_idx >= 0:
                         show_label.add(best_idx)
+                # Collision-suppression: drop label if two selected bars are too close
+                sorted_labels = sorted(show_label)
+                min_dist = bar_w * 3
+                for a, b in zip(sorted_labels, sorted_labels[1:]):
+                    dist = (gap + b * (bar_w + gap) + bar_w // 2) - (gap + a * (bar_w + gap) + bar_w // 2)
+                    if dist < min_dist:
+                        tot_a = token_data[a].get("input", 0) + token_data[a].get("output", 0)
+                        tot_b = token_data[b].get("input", 0) + token_data[b].get("output", 0)
+                        show_label.discard(a if tot_a <= tot_b else b)
             else:
                 show_label = set()
+
+            max_val = max((v for i, v in enumerate(data) if i not in disabled_indices), default=0) or 100
 
             for i, pct in enumerate(data):
                 x1 = gap + i * (bar_w + gap)
@@ -749,9 +760,10 @@ class StatsPanel:
                 canvas.create_rectangle(x1, top_h, x2, top_h + bar_area_h, fill=track_fill, outline="")
 
                 if pct > 0:
-                    bh = max(STATS_BAR_MIN_HEIGHT, int(pct / 100 * bar_area_h))
+                    bh = max(STATS_BAR_MIN_HEIGHT, int(pct / max_val * bar_area_h))
                     y1 = top_h + bar_area_h - bh
-                    fill = _blend_color(_bar_color(pct), t.bg, 0.45) if is_disabled else _bar_color(pct)
+                    normalized = int(pct / max_val * 100) if max_val else 0
+                    fill = _blend_color(_bar_color(normalized), t.bg, 0.45) if is_disabled else _bar_color(normalized)
                     canvas.create_rectangle(x1, y1, x2, top_h + bar_area_h, fill=fill, outline="")
 
                 if is_selected:

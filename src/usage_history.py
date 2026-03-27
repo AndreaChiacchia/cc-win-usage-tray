@@ -78,7 +78,7 @@ def get_hourly_avg(email: str, for_date: date) -> list[int]:
         )
         GROUP BY hour
         """,
-        (email, for_date.isoformat()),
+        [email, for_date.isoformat()],
     ).fetchall()
     result = [0] * 24
     for hour, avg_pct in rows:
@@ -104,7 +104,7 @@ def get_daily_avg(email: str, start_date: date, days: int) -> list[int]:
         )
         GROUP BY day
         """,
-        (email, start_date.isoformat(), end_date.isoformat()),
+        [email, start_date.isoformat(), end_date.isoformat()],
     ).fetchall()
     result = [0] * days
     for day_str, avg_pct in rows:
@@ -115,6 +115,65 @@ def get_daily_avg(email: str, start_date: date, days: int) -> list[int]:
         idx = (day - start_date).days
         if 0 <= idx < days:
             result[idx] = avg_pct or 0
+    return result
+
+
+def get_hourly_delta(email: str, for_date: date, label: str) -> list[int]:
+    """24-element list: pct delta per clock hour for *for_date* and *label*.
+
+    Per hour: delta = last_pct - first_pct. If negative (counter reset), use last_pct.
+    """
+    conn = db.get_connection()
+    rows = conn.execute(
+        """
+        SELECT CAST(strftime('%H', ts) AS INTEGER) AS hour, pct
+        FROM usage_snapshots
+        WHERE email=? AND DATE(ts)=? AND label=?
+        ORDER BY ts
+        """,
+        [email, for_date.isoformat(), label],
+    ).fetchall()
+    buckets: dict[int, list[int]] = {}
+    for hour, pct in rows:
+        if 0 <= hour < 24:
+            buckets.setdefault(hour, []).append(pct)
+    result = [0] * 24
+    for hour, values in buckets.items():
+        delta = values[-1] - values[0]
+        result[hour] = values[-1] if delta < 0 else delta
+    return result
+
+
+def get_daily_delta(email: str, start_date: date, days: int, label: str) -> list[int]:
+    """*days*-element list: pct delta per calendar day starting at *start_date* for *label*.
+
+    Per day: delta = last_pct - first_pct. If negative (counter reset), use last_pct.
+    """
+    from datetime import timedelta
+    end_date = start_date + timedelta(days=days - 1)
+    conn = db.get_connection()
+    rows = conn.execute(
+        """
+        SELECT DATE(ts) AS day, pct
+        FROM usage_snapshots
+        WHERE email=? AND DATE(ts) >= ? AND DATE(ts) <= ? AND label=?
+        ORDER BY ts
+        """,
+        [email, start_date.isoformat(), end_date.isoformat(), label],
+    ).fetchall()
+    buckets: dict[str, list[int]] = {}
+    for day_str, pct in rows:
+        buckets.setdefault(day_str, []).append(pct)
+    result = [0] * days
+    for day_str, values in buckets.items():
+        try:
+            day = date.fromisoformat(day_str)
+        except Exception:
+            continue
+        idx = (day - start_date).days
+        if 0 <= idx < days:
+            delta = values[-1] - values[0]
+            result[idx] = values[-1] if delta < 0 else delta
     return result
 
 

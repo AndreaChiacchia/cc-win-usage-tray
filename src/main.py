@@ -184,6 +184,7 @@ class ClaudeUsageTray:
             # Account changed — usage data is from the old session, discard it
             prev = getattr(self, '_active_email', None)
             if prev and prev != email:
+                token_history.scan_blocking(prev)  # flush tokens for outgoing account
                 from claude_runner import force_restart_session
                 force_restart_session()
                 self._active_email = email

@@ -79,9 +79,14 @@ def _process_file(conn, fpath: str, email: str) -> None:
             if prev_mtime == mtime and prev_size == size and prev_offset >= size:
                 return  # unchanged and fully processed — skip
         else:
-            prev_size = 0
-            prev_offset = 0
-            prev_email = ""
+            # First time seeing this file — establish baseline offset, don't process historical lines
+            conn.execute(
+                """INSERT OR REPLACE INTO jsonl_processed(path, mtime, file_size, last_offset, email)
+                   VALUES (?,?,?,?,?)""",
+                (fpath, mtime, size, size, email),
+            )
+            conn.commit()
+            return
 
         if size >= prev_size:
             # File grew or is new — seek to last good offset and parse only new lines

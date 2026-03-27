@@ -4,7 +4,7 @@ A Windows app that monitors [Claude Code](https://claude.ai/code) usage and show
 
 ![version](https://img.shields.io/badge/version-v1.10.1-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
-![python](https://img.shields.io/badge/python-3.10%2B-blue)
+![python](https://img.shields.io/badge/build-python%203.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
 
 <!-- screenshot -->
@@ -26,12 +26,19 @@ A Windows app that monitors [Claude Code](https://claude.ai/code) usage and show
 ## Requirements
 
 - Windows 10 or 11
-- Python 3.10+
 - [Claude Code CLI](https://claude.ai/code) installed and available on `PATH`
 
 ---
 
-## Installation & Running
+## Running the Executable
+
+Download `ClaudeUsageTray.exe` from the [releases](https://github.com/a-chiacchiaretta/claude-usage-tray/releases) page and run it directly — no Python required.
+
+---
+
+## Running from Source
+
+Requires Python 3.10+.
 
 ```bash
 cd src
@@ -42,6 +49,8 @@ python main.py
 ---
 
 ## Building the Executable
+
+Requires Python 3.10+ and PyInstaller.
 
 ```bash
 cd src

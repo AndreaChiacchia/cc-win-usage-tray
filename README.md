@@ -32,7 +32,7 @@ A Windows app that monitors [Claude Code](https://claude.ai/code) usage and show
 
 ## Running the Executable
 
-Download `ClaudeUsageTray.exe` from the [releases](https://github.com/a-chiacchiaretta/claude-usage-tray/releases) page and run it directly — no Python required.
+Download `ClaudeUsageTray.exe` from the [releases](https://github.com/AndreaChiacchia/cc-win-usage-tray/releases) page and run it directly — no Python required.
 
 ---
 

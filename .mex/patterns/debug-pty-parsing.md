@@ -1,0 +1,89 @@
+---
+name: debug-pty-parsing
+description: Diagnose failures in the PTY → parse → display pipeline. Use when usage data is empty, wrong, or the app shows an error instead of percentages.
+triggers:
+  - "debug"
+  - "empty output"
+  - "parse error"
+  - "PTY hang"
+  - "usage not updating"
+  - "error state"
+  - "Could not parse"
+  - "timeout"
+edges:
+  - target: context/pty-runner.md
+    condition: always — primary reference for PTY internals and gotchas
+  - target: context/architecture.md
+    condition: when tracing which component in the pipeline is failing
+last_updated: 2026-03-30
+---
+
+# Debug: PTY / Parsing Failures
+
+## Context
+
+The capture pipeline has three boundaries where failures occur:
+
+1. **PTY spawn** — Claude CLI not found, trust dialog not dismissed, banner never appears
+2. **Capture** — `/status` or `/usage` returns empty, clipped, or garbled text
+3. **Parse** — `usage_parser.py` can't extract sections from the captured text
+
+## Steps
+
+### 1. Check the debug log first
+
+`~/.ccwinusage/logs/usage_output_debug.txt` — written on every successful PTY round trip. Contains `repr()` of raw status and usage text including ANSI escapes.
+
+- **Empty file or file not written:** PTY raised an exception before `_on_usage_success()` was reached. Check the console (if running from source) for the exception.
+- **`status_text` has no `@` sign:** `parse_email()` will return `None` → triggers `_on_usage_error("Could not identify account...")`. The CLI is returning something unexpected from `/status`.
+- **`usage_text` has no `Current session` / `Current week`:** `_USAGE_HEADER_RE` didn't match. The resize trick may not have triggered a re-render, or PTY dimensions are wrong.
+
+### 2. Check for PTY timeout
+
+If the app hangs in "Loading..." state:
+- `PTY_TIMEOUT_S = 45` in `config.py` — this is the max wait. If it's hitting this, the CLI is unresponsive.
+- Confirm Claude CLI works in a regular terminal: run `claude` manually, type `/usage`, check the output.
+
+### 3. Check banner detection
+
+If PTY spawns but never completes:
+- `_BANNER_RE = re.compile(r'Claude Code|╭|Welcome', re.IGNORECASE)` — if the CLI greeting changed, this won't match.
+- `_BANNER_FALLBACK_S = 8.0` provides a fallback — after 8s of any output, banner wait ends regardless.
+- Check the trust dialog: `_TRUST_PROMPT_RE` looks for `trust.{0,10}folder|trustthisfolder|Entertoconfirm`. If the dialog text changed, the `\r` confirmation won't be sent.
+
+### 4. Check parse regex
+
+If the debug log shows text with usage info but sections aren't displayed:
+- `_SECTION_HEADER_RE` matches `Current session|Current week|Extra usage` (case-insensitive)
+- `_PERCENTAGE_RE` matches `(\d+)%\s*used`
+- `_RESET_RE` matches reset/refresh keywords; handles misspelled `Reses` variant
+
+Add a temporary `print()` in `parse_usage()` or run it directly against the captured `raw_text` from the DB to see what the parser sees.
+
+### 5. Check the resize trick
+
+If `/usage` returns empty or clipped text, the resize trick in `query_usage()` may need adjustment:
+- Current: `setwinsize(PTY_ROWS, PTY_COLS - 1)` → 50ms → `setwinsize(PTY_ROWS, PTY_COLS)`
+- Try increasing the sleep between resize calls, or increase `PTY_COLS`.
+
+### 6. Check account change handling
+
+If usage shows the wrong account's data:
+- On account change, `force_restart_session()` is called and a fresh `/status` + `/usage` cycle begins.
+- Check `_active_email` in `ClaudeUsageTray` — if it's stale, the comparison `prev != email` may not trigger.
+
+## Common Error States
+
+| Symptom | Likely cause |
+|---|---|
+| "Could not identify account from /status output" | `/status` returned no email-like string |
+| "Empty output from Claude Code" | PTY returned nothing from `/usage`; resize trick failed |
+| "Could not parse usage data — unexpected format" | No section headers found; CLI output format changed |
+| "Could not extract any usage sections" | Headers found but no `X% used` matched |
+| App stuck on loading icon | PTY timeout; CLI unresponsive; check debug log |
+
+## Update Scaffold
+
+- [ ] If a new failure mode was discovered, add it to the table above
+- [ ] If a regex needed updating, document the change in `context/pty-runner.md`
+- [ ] Update `.mex/ROUTER.md` "Known Issues" if the issue is ongoing

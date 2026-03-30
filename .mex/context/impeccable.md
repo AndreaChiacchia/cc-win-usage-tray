@@ -1,0 +1,100 @@
+---
+name: impeccable
+description: Design intent, brand personality, design tokens, animation guidelines, and aesthetic principles for Claude Usage Tray. Load when writing any UI code.
+triggers:
+  - "design"
+  - "theme"
+  - "color"
+  - "animation"
+  - "layout"
+  - "style"
+  - "ui"
+  - "ux"
+  - "visual"
+  - "font"
+  - "spacing"
+last_updated: 2026-03-30
+---
+
+# Design Context — Claude Usage Tray
+
+This file captures the design intent, brand personality, and guiding principles for Claude Usage Tray. It mirrors `.impeccable.md` at the project root (the canonical source). If both exist and differ, the project root file takes precedence.
+
+---
+
+## Users
+
+Developers actively using Claude Code CLI who want at-a-glance visibility into their token budgets (session, weekly, extra) across one or more accounts. They are technical, accustomed to dark interfaces, and interact with the app passively — it lives in the system tray and surfaces only when needed. The popup is a quick check-in, not a workflow destination.
+
+## Brand Personality
+
+**Technical + polished/premium.** The app is a developer tool at its core, but it should feel crafted — not thrown together. Think: VS Code meets Claude.ai. Every pixel should feel intentional. Details like smooth progress bars, subtle shimmer, and clean typography signal that this is a quality piece of software, not a utility script.
+
+Three-word anchor: **precise, composed, crafted**.
+
+## Aesthetic Direction
+
+- **Base vibes:** Claude.ai — dark, modern, with hints of purple/indigo warmth. Not cold or sterile.
+- **Theming:** The app supports fully customizable themes. The *default* theme (Claude Code) should feel closest to Claude's own visual language.
+- **Dark-first:** All default themes are dark-mode optimized. The Light theme exists for accessibility, not as the primary experience.
+- **Flat & minimal:** No skeuomorphism, no heavy shadows, no bevels. Borders are thin (1px). Backgrounds are layered dark grays.
+- **Terminal influence:** Monospace options (Consolas) and threshold-based color coding (green/amber/red) nod to developer tooling culture.
+- **Anti-references:** Avoid anything that feels like a generic Windows app, a retro widget, or a loud dashboard. No gradients on backgrounds, no rounded-rectangle window chrome, no icon-heavy toolbars.
+
+## Emotional Goals
+
+1. **Awareness** — The user should instantly know where they stand. Hierarchy, color coding, and layout should make the most important data (current usage, threshold proximity) immediately legible.
+2. **Delight** — Small, purposeful moments of polish: smooth bar-fill animations, a shimmer on loading state, clean transitions. Nothing gratuitous — every animation should serve a function.
+
+## Design Principles
+
+1. **Data clarity first.** Every layout decision should make usage data faster to read. Avoid visual noise that competes with the numbers. If an element doesn't help the user understand their usage faster, remove it.
+
+2. **Polish at the detail level.** The overall design is simple — the quality lives in the details. Consistent spacing (multiples of 4px), precise color choices, smooth easing on animations. Never ship rough edges.
+
+3. **Technical confidence.** Typography, iconography, and color language should signal developer-grade software. Use system fonts (Segoe UI) at crisp sizes, monospace for numeric values where appropriate, and precise threshold colors (not soft pastels).
+
+4. **Unobtrusive by default, expressive when needed.** The tray icon and popup should stay quiet when usage is low. As thresholds are crossed, the interface becomes progressively more urgent — color shifts from green → amber → red without being alarming.
+
+5. **WCAG AA as the floor.** All text in the default theme must meet 4.5:1 contrast ratio. Theme customization is user-controlled, but built-in themes should not require the user to fix accessibility issues.
+
+---
+
+## Design Tokens (Current Defaults)
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `bg` | `#1e1e1e` | Main popup background |
+| `fg` | `#e5e5e5` | Primary text |
+| `fg_dim` | `#8b8b8b` | Secondary / timestamp text |
+| `border` | `#333333` | 1px borders, separators |
+| `bar_bg` | `#2d2d2d` | Progress bar track |
+| `btn_bg` | `#2d2d2d` | Button background |
+| `btn_active` | `#3d3d3d` | Button hover/active state |
+| `green` | `#10b981` | 0–49% usage (emerald) |
+| `yellow` | `#f59e0b` | 50–79% usage (amber) |
+| `red` | `#ef4444` | ≥80% usage (red) |
+| Font | Segoe UI 10pt | Default UI font |
+| Font bold | Segoe UI 11pt bold | Headers, titles |
+| Popup width | 520px | Fixed |
+| Padding | 24px | Content margins |
+| Bar height | 18px | Progress bars |
+| Radius | 0px | No rounded corners (flat) |
+
+---
+
+## Animation Guidelines
+
+- **Bar fill:** 600ms ease-in-out on first render; skip animation on rapid refreshes.
+- **Shimmer:** Animated only during loading state. Width: 65px band. Speed: ~30 FPS.
+- **Stats panel:** 220ms slide + fade on open; 160ms fade on close.
+- **Pace delta:** 400ms fade + count on change.
+- **General rule:** Animations should confirm state changes, not decorate idle states. All durations should feel snappy — under 600ms for primary interactions.
+
+---
+
+## Theming Notes
+
+- The default theme is the canonical reference for design quality. Other themes (Dracula, Solarized, etc.) adapt the palette while keeping the same structural principles.
+- Theme JSON files live in `~/.ccwinusage/themes/`. Built-in themes are defined in `config.py` as `Theme` dataclasses.
+- When introducing new UI elements, add corresponding theme keys so custom themes can override them.

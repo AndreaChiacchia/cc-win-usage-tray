@@ -90,8 +90,9 @@ class ClaudeUsageTray:
         self.root.after(500, self._trigger_refresh)
 
         # --- Startup notification ---
-        from notifier import notify_startup
+        from notifier import notify_startup, check_peak_transition
         notify_startup()
+        check_peak_transition()  # initializes peak state silently
 
     # ------------------------------------------------------------------
     # Tray icon management
@@ -230,8 +231,9 @@ class ClaudeUsageTray:
             token_history.scan_blocking(email)
 
             # Check thresholds and notify
-            from notifier import check_and_notify
+            from notifier import check_and_notify, check_peak_transition
             check_and_notify(old_accounts, all_accounts)
+            check_peak_transition()
 
             self.root.after(0, lambda: self._apply_data(all_accounts))
         except Exception as e:

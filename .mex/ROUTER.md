@@ -51,6 +51,10 @@ Then read this file fully before doing anything else in this session.
 **Known Issues:**
 - None tracked currently. Check git log for recent fixes.
 
+**Recently completed:**
+- Bug fix: peak label in popup bottom bar now refreshes every 60s via `_tick_relative` (was stale if popup stayed open across a boundary)
+- Feature: peak/off-peak transition toast notifications — fires once per transition via `check_peak_transition()` in `notifier.py`, called from `_on_usage_success` and once at startup (silent init)
+
 ## Routing Table
 
 Load the relevant file based on the current task. Always load `context/architecture.md` first if not already in context this session.

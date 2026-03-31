@@ -695,6 +695,7 @@ class UsagePopup(SettingsMixin, AnimationsMixin, MonitorMixin, ScrollMixin):
         if any(settings_mod.get_relative_time_enabled(em) for em in self._last_accounts):
             self._refresh_sync_labels()
         self._refresh_pace_deltas()
+        self._update_peak_indicator()
         self._start_relative_timer()
 
     def _refresh_pace_deltas(self):

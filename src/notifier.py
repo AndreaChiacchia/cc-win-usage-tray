@@ -23,6 +23,8 @@ _last_notified: dict[tuple[str, str], int] = {}
 
 THRESHOLD_STEP = 10  # Notify every 10%
 
+_last_peak_state: bool | None = None
+
 APP_ID = "ClaudeUsageTray"
 _SHORTCUT_NAME = "Claude Usage Tray.lnk"
 
@@ -171,3 +173,45 @@ def _fire_notification(email: str, label: str, pct: int, threshold: int,
         toast.show()
     except Exception as e:
         _log_debug(f"toast.show() failed: {e}")
+
+
+def check_peak_transition():
+    """Detect peak/off-peak boundary crossings and fire a toast on transition.
+
+    On first call, initializes state silently (no toast). Subsequent calls
+    fire a toast whenever the state flips. This is a global notification —
+    it fires once per transition regardless of per-account settings.
+    """
+    global _last_peak_state
+    import time_utils
+    start = settings_mod.get_peak_start()
+    end = settings_mod.get_peak_end()
+    now_peak = time_utils.is_peak_time(start, end)
+    if _last_peak_state is None:
+        _last_peak_state = now_peak
+        return
+    if now_peak != _last_peak_state:
+        _last_peak_state = now_peak
+        _fire_peak_notification(now_peak, start, end)
+
+
+def _fire_peak_notification(entering_peak: bool, start: int, end: int):
+    """Send a toast notifying the user that peak hours started or ended."""
+    if entering_peak:
+        title = "Peak hours started"
+        msg = f"Peak window: {start:02d}:00 – {end:02d}:00 local time"
+    else:
+        title = "Off-peak hours started"
+        msg = f"Outside peak window ({start:02d}:00 – {end:02d}:00)"
+    toast = Notification(
+        app_id=APP_ID,
+        title=title,
+        msg=msg,
+        icon=_get_icon_path(),
+        duration="short",
+    )
+    toast.set_audio(audio.Default, loop=False)
+    try:
+        toast.show()
+    except Exception as e:
+        _log_debug(f"peak transition toast.show() failed: {e}")

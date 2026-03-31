@@ -1,6 +1,6 @@
 # Claude Usage Tray
 
-A Windows app that monitors [Claude Code](https://claude.ai/code) usage and shows session, weekly, and extra token budgets in a compact themed popup with alerts when thresholds are crossed.
+Sits in the Windows system tray and shows your [Claude Code](https://claude.ai/code) token budgets — session, weekly, and extra — in a compact themed popup. Fires toast notifications when usage crosses a threshold.
 
 ![version](https://img.shields.io/badge/version-v1.10.1-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
@@ -13,13 +13,13 @@ A Windows app that monitors [Claude Code](https://claude.ai/code) usage and show
 
 ## Features
 
-- **Usage overview** - session, weekly, and extra token budgets in a compact popup with color-coded progress bars
-- **Theming** - built-in themes let you customize the popup appearance
-- **Threshold notifications** - Windows toasts when usage crosses configurable limits
-- **Multi-account tracking** - keeps usage data for multiple Claude accounts and surfaces the active one first
-- **Historical stats** - charts and token breakdowns to inspect recent usage trends, with peak-hour annotation
-- **Peak times indicator** - configurable peak window shown in the bottom bar and highlighted on stats charts
-- **Built for Claude Code CLI** - uses a PTY-based runner to fetch and parse live usage output automatically
+- Session, weekly, and extra token budgets in a compact popup with color-coded progress bars
+- Built-in themes to customize the popup appearance
+- Windows toast notifications when usage crosses configurable thresholds
+- Tracks multiple Claude accounts; the active one shows at the top
+- Historical stats with charts, token breakdowns, and peak-hour annotation
+- Configurable peak times window shown in the bottom bar and on stats charts
+- PTY-based runner fetches and parses live Claude CLI output without stealing focus
 
 ---
 
@@ -97,8 +97,8 @@ src/
 2. A state machine drives the session: waits for the banner, auto-confirms any first-run trust dialog, then sends `/status` followed by `/usage`.
 3. Raw PTY output is buffered in a `queue.Queue` and ANSI-stripped before parsing.
 4. `usage_parser.py` extracts usage sections with regex into typed dataclasses.
-5. The Tkinter popup and tray icon are rebuilt on every refresh cycle.
-6. Windows toasts fire when usage crosses a boundary in either direction.
+5. The popup and tray icon update on every refresh cycle.
+6. Windows toasts fire when usage crosses a threshold boundary.
 
 ### Threading model
 

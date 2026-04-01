@@ -2,7 +2,7 @@
 
 Sits in the Windows system tray and shows your [Claude Code](https://claude.ai/code) token budgets — session, weekly, and extra — in a compact themed popup. Fires toast notifications when usage crosses a threshold.
 
-![version](https://img.shields.io/badge/version-v1.11.0-blue)
+![version](https://img.shields.io/badge/version-v1.12.0-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/build-python%203.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
@@ -17,7 +17,7 @@ Sits in the Windows system tray and shows your [Claude Code](https://claude.ai/c
 - Built-in themes to customize the popup appearance
 - Windows toast notifications when usage crosses configurable thresholds
 - Tracks multiple Claude accounts; the active one shows at the top
-- Historical stats with charts, token breakdowns, and peak-hour annotation
+- Historical stats with Day / Week / Month / Year views, token breakdowns, and peak-hour annotation
 - Configurable peak times window shown in the bottom bar and on stats charts
 - PTY-based runner fetches and parses live Claude CLI output without stealing focus
 

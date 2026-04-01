@@ -265,6 +265,46 @@ def _build_year_month_slots(
     return slots
 
 
+def _build_decade_year_slots(
+    end_year: int,
+    today: date,
+    decade_data: list[int],
+    decade_tokens: list[dict],
+    decade_start: date,
+) -> list[dict]:
+    slots: list[dict] = []
+    for y in range(end_year - 9, end_year + 1):
+        year_start = date(y, 1, 1)
+        days_in_year = 366 if calendar.isleap(y) else 365
+        day_offset = (year_start - decade_start).days
+
+        token_totals = _empty_token_totals()
+        pct_values: list[int] = []
+        for d in range(days_in_year):
+            day_date = year_start + timedelta(days=d)
+            if day_date > today:
+                break
+            idx = day_offset + d
+            if 0 <= idx < len(decade_data) and decade_data[idx] > 0:
+                pct_values.append(decade_data[idx])
+            if 0 <= idx < len(decade_tokens):
+                slot = decade_tokens[idx]
+                token_totals["input"] += slot.get("input", 0)
+                token_totals["output"] += slot.get("output", 0)
+                token_totals["cache_read"] += slot.get("cache_read", 0)
+                token_totals["cache_creation"] += slot.get("cache_creation", 0)
+
+        slots.append({
+            "year": y,
+            "label": str(y),
+            "hover_label": str(y),
+            "pct": int(sum(pct_values) / len(pct_values)) if pct_values else 0,
+            "tokens": token_totals,
+            "disabled": year_start > today,
+        })
+    return slots
+
+
 class StatsPanel:
     """Hover-triggered stats panel shown to the left of the main popup."""
 
@@ -274,6 +314,7 @@ class StatsPanel:
     _MONTH_VIEW_DAY = "day"
     _MONTH_VIEW_WEEK = "week"
     _MONTH_VIEW_MONTH = "month"
+    _MONTH_VIEW_YEAR = "year"
     _CHART_MODE_FILL = _STATS_BAR_MODE_FILL
     _CHART_MODE_COLOR = _STATS_BAR_MODE_COLOR
 
@@ -285,6 +326,7 @@ class StatsPanel:
         self._current_sections: list | None = None
         self._selected_date: date | None = None
         self._selected_month: date | None = None
+        self._selected_year: int | None = None
         self._selected_day_frame: tk.Frame | None = None
         self._selected_day_redraw = None
         self._week_chart_redraw = None
@@ -348,6 +390,7 @@ class StatsPanel:
         if not already_visible or previous_email != email:
             self._selected_date = _now().date()
             self._selected_month = None
+            self._selected_year = None
 
         if not was_pinned:
             self._state = self._PREVIEWING
@@ -380,6 +423,7 @@ class StatsPanel:
         self._current_email = None
         self._selected_date = None
         self._selected_month = None
+        self._selected_year = None
         self._start_close_animation()
         self._token_panel.force_hide()
 
@@ -484,8 +528,26 @@ class StatsPanel:
 
         self._separator(t)
 
-        if self._month_view_mode == self._MONTH_VIEW_MONTH:
-            year = now.year
+        if self._month_view_mode == self._MONTH_VIEW_YEAR:
+            end_year = now.year
+            decade_start = date(end_year - 9, 1, 1)
+            total_days = (date(end_year + 1, 1, 1) - decade_start).days
+            decade_data = usage_history.get_daily_delta(email, decade_start, total_days, "Current week")
+            decade_tokens = token_history.get_daily_tokens(decade_start, total_days, email)
+            self._month_chart_context = {
+                "email": email,
+                "now": now,
+                "month_start": month_start,
+                "days_in_month": days_in_month,
+                "month_data": [],
+                "month_tokens": [],
+                "week_slots": [],
+                "decade_slots": _build_decade_year_slots(end_year, now.date(), decade_data, decade_tokens, decade_start),
+                "decade_end_year": end_year,
+                "decade_start": decade_start,
+            }
+        elif self._month_view_mode == self._MONTH_VIEW_MONTH:
+            year = self._selected_year or now.year
             year_start = date(year, 1, 1)
             days_in_year = 366 if calendar.isleap(year) else 365
             year_data = usage_history.get_daily_delta(email, year_start, days_in_year, "Current week")
@@ -715,14 +777,18 @@ class StatsPanel:
             self._month_chart_redraw()
 
     def _set_month_view_mode(self, mode: str) -> None:
-        if mode not in {self._MONTH_VIEW_DAY, self._MONTH_VIEW_WEEK, self._MONTH_VIEW_MONTH}:
+        if mode not in {self._MONTH_VIEW_DAY, self._MONTH_VIEW_WEEK, self._MONTH_VIEW_MONTH, self._MONTH_VIEW_YEAR}:
             return
         if mode == self._month_view_mode:
             return
         prev_mode = self._month_view_mode
         self._month_view_mode = mode
         self._token_panel.force_hide()
-        if mode == self._MONTH_VIEW_MONTH or prev_mode == self._MONTH_VIEW_MONTH:
+        needs_rebuild = (
+            mode in {self._MONTH_VIEW_MONTH, self._MONTH_VIEW_YEAR}
+            or prev_mode in {self._MONTH_VIEW_MONTH, self._MONTH_VIEW_YEAR}
+        )
+        if needs_rebuild:
             self._rebuild_content()
             self._position_panel()
         else:
@@ -752,7 +818,10 @@ class StatsPanel:
         month_start = ctx["month_start"]
         days_in_month = ctx["days_in_month"]
 
-        if self._month_view_mode == self._MONTH_VIEW_MONTH:
+        if self._month_view_mode == self._MONTH_VIEW_YEAR:
+            end_year = ctx["decade_end_year"]
+            title_text = f"{end_year - 9} – {end_year}"
+        elif self._month_view_mode == self._MONTH_VIEW_MONTH:
             title_text = str(ctx["year"])
         else:
             current_month_start = _month_start().date()
@@ -774,8 +843,46 @@ class StatsPanel:
         self._month_toggle_button(toggle, t, "Day", self._MONTH_VIEW_DAY).pack(side=tk.LEFT)
         self._month_toggle_button(toggle, t, "Week", self._MONTH_VIEW_WEEK).pack(side=tk.LEFT, padx=(4, 0))
         self._month_toggle_button(toggle, t, "Month", self._MONTH_VIEW_MONTH).pack(side=tk.LEFT, padx=(4, 0))
+        self._month_toggle_button(toggle, t, "Year", self._MONTH_VIEW_YEAR).pack(side=tk.LEFT, padx=(4, 0))
 
-        if self._month_view_mode == self._MONTH_VIEW_MONTH:
+        if self._month_view_mode == self._MONTH_VIEW_YEAR:
+            decade_slots = ctx["decade_slots"]
+            end_year = ctx["decade_end_year"]
+
+            def _decade_hover(i: int) -> dict:
+                slot = decade_slots[i]
+                return {
+                    "label": slot["hover_label"],
+                    **slot["tokens"],
+                }
+
+            self._month_chart_redraw = self._bar_chart(
+                t,
+                [slot["pct"] for slot in decade_slots],
+                label_fn=lambda i, slots=decade_slots: slots[i]["label"] if i < len(slots) else "",
+                hover_fn=_decade_hover,
+                token_data=[slot["tokens"] for slot in decade_slots],
+                selected_index_fn=self._get_month_selected_index,
+                disabled_indices_fn=lambda slots=decade_slots: {
+                    idx for idx, slot in enumerate(slots) if slot["disabled"]
+                },
+                on_click=lambda idx, slots=decade_slots: self._on_year_bar_click(slots[idx]["year"]),
+                parent=self._month_section_frame,
+            )
+
+            decade_start = ctx["decade_start"]
+            decade_start_dt = datetime.combine(decade_start, datetime.min.time())
+            now = ctx["now"]
+            extra = usage_history.get_extra_spend_current(self._current_email, decade_start_dt, now)
+            if extra:
+                self._extra_spend_label_in(
+                    self._month_section_frame, t,
+                    f"Extra spend {end_year - 9}–{end_year}: ", extra,
+                )
+            else:
+                self._dim_label(t, "No extra spending", parent=self._month_section_frame)
+
+        elif self._month_view_mode == self._MONTH_VIEW_MONTH:
             year_slots = ctx["year_slots"]
 
             def _year_hover(i: int) -> dict:
@@ -914,6 +1021,29 @@ class StatsPanel:
         self._rebuild_content()
         self._position_panel()
 
+    def _on_year_bar_click(self, year: int) -> None:
+        now = _now()
+        self._selected_year = year
+        self._month_view_mode = self._MONTH_VIEW_MONTH
+        if year == now.year:
+            self._selected_month = None
+            self._selected_date = now.date()
+        else:
+            self._selected_month = date(year, 12, 1)
+            self._selected_date = date(year, 12, 31)
+        self._rebuild_content()
+        self._position_panel()
+
+    def _get_decade_selected_year_index(self) -> int | None:
+        if self._month_chart_context is None:
+            return None
+        end_year = self._month_chart_context.get("decade_end_year")
+        if end_year is None:
+            return None
+        selected_year = self._selected_year if self._selected_year is not None else _now().year
+        idx = selected_year - (end_year - 9)
+        return idx if 0 <= idx < 10 else None
+
     def _get_year_selected_month_index(self) -> int | None:
         if self._selected_date is None:
             return None
@@ -954,6 +1084,8 @@ class StatsPanel:
     def _get_month_selected_index(self) -> int | None:
         if self._selected_date is None:
             return None
+        if self._month_view_mode == self._MONTH_VIEW_YEAR:
+            return self._get_decade_selected_year_index()
         if self._month_view_mode == self._MONTH_VIEW_MONTH:
             return self._get_year_selected_month_index()
         if self._month_view_mode == self._MONTH_VIEW_WEEK:

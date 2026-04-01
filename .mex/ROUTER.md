@@ -54,6 +54,7 @@ Then read this file fully before doing anything else in this session.
 **Recently completed:**
 - Bug fix: peak label in popup bottom bar now refreshes every 60s via `_tick_relative` (was stale if popup stayed open across a boundary)
 - Feature: peak/off-peak transition toast notifications — fires once per transition via `check_peak_transition()` in `notifier.py`, called from `_on_usage_success` and once at startup (silent init)
+- Feature: "Month" (year) view added to stats panel month section — 12 monthly bars for current year, click to drill into week view; `_selected_month` state tracks navigated month across Day/Week/Month views
 
 ## Routing Table
 

@@ -221,6 +221,25 @@ def _parse_time_of_day(s: str) -> "tuple[int, int] | None":
         if 0 <= h <= 23 and 0 <= mn <= 59:
             return h, mn
 
+    # ANSI stripping may eat 'a' from 'am' or 'p' from 'pm' (both are valid
+    # CSI final bytes in the @-~ range), leaving bare 'm'.
+    # Try 'am' first (most resets are morning); fall back to 'pm'.
+    m = re.match(r'^(\d{1,2}):(\d{2})\s*m$', s)
+    if m:
+        h, mn = int(m.group(1)), int(m.group(2))
+        h = _to_24h(h, 'am')
+        if h is None:
+            return None
+        return h, mn
+
+    m = re.match(r'^(\d{1,2})\s*m$', s)
+    if m:
+        h = int(m.group(1))
+        h = _to_24h(h, 'am')
+        if h is None:
+            return None
+        return h, 0
+
     return None
 
 

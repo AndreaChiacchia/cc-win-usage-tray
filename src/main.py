@@ -2,6 +2,7 @@
 
 import tkinter as tk
 import threading
+import queue
 import sys
 
 import pystray
@@ -71,6 +72,8 @@ class ClaudeUsageTray:
 
         # --- Auto-refresh ---
         self._schedule_auto_refresh()
+        self._ui_queue: queue.Queue = queue.Queue()
+        self._poll_ui_queue()
 
         # --- Preload saved accounts so bars are immediately visible ---
         saved = storage.load_all_accounts()
@@ -199,12 +202,12 @@ class ClaudeUsageTray:
                 force_restart_session()
                 self._active_email = email
                 self._refreshing = False
-                self.root.after(100, self._trigger_refresh)
+                self._dispatch(self._trigger_refresh)
                 return
 
             self._active_email = email
             # Re-schedule with the correct per-account interval (first schedule used "" email)
-            self.root.after(0, self._on_refresh_interval_changed)
+            self._dispatch(self._on_refresh_interval_changed)
             usage_data = parse_usage(usage_text)
 
             if usage_data.error:
@@ -235,7 +238,7 @@ class ClaudeUsageTray:
             check_and_notify(old_accounts, all_accounts)
             check_peak_transition()
 
-            self.root.after(0, lambda: self._apply_data(all_accounts))
+            self._dispatch(lambda: self._apply_data(all_accounts))
         except Exception as e:
             print(f"Error in _on_usage_success: {e}")
             self._on_usage_error(f"Processing error: {e}")
@@ -259,7 +262,7 @@ class ClaudeUsageTray:
                 if _apply_expired_resets(all_accounts):
                     storage.save_all_accounts(all_accounts)
                 self.popup._last_refresh_error = message
-            self.root.after(0, lambda: self._apply_data(all_accounts))
+            self._dispatch(lambda: self._apply_data(all_accounts))
         except Exception as e:
             print(f"Error in _on_usage_error: {e}")
         finally:
@@ -273,6 +276,20 @@ class ClaudeUsageTray:
         self._update_tray_icon(accounts)
         if self._was_visible_before_refresh and not self.popup.visible:
             self.popup.show(steal_focus=False)
+
+    def _dispatch(self, callback):
+        """Thread-safe: enqueue a callback for the main thread."""
+        self._ui_queue.put(callback)
+
+    def _poll_ui_queue(self):
+        """Drain all pending callbacks from background threads."""
+        while True:
+            try:
+                cb = self._ui_queue.get_nowait()
+                cb()
+            except queue.Empty:
+                break
+        self.root.after(100, self._poll_ui_queue)
 
     def _schedule_auto_refresh(self):
         interval_ms = settings_mod.get_refresh_interval_minutes(self._active_email) * 60_000

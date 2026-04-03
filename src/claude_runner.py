@@ -193,6 +193,26 @@ class ClaudePtySession:
                 break
         return result
 
+    def _drain_until_silent(self, timeout: float = 2.0, silence: float = 0.3):
+        """Drain queue until no new output for `silence` seconds. Caps at `timeout`."""
+        deadline = time.monotonic() + timeout
+        last_data_at = time.monotonic()
+        while time.monotonic() < deadline:
+            got_data = False
+            while True:
+                try:
+                    chunk = self._data_queue.get_nowait()
+                    if chunk is None:
+                        return
+                    got_data = True
+                except queue.Empty:
+                    break
+            if got_data:
+                last_data_at = time.monotonic()
+            if (time.monotonic() - last_data_at) >= silence:
+                return
+            time.sleep(0.02)
+
     def _ensure_alive(self):
         """Re-spawn if the PTY process has died or is unresponsive."""
         if self._proc is None or not self._ready:
@@ -295,6 +315,8 @@ class ClaudePtySession:
                 return buf
 
             if silence > 3.0 and len(clean.strip()) > 10:
+                if not _USAGE_HEADER_RE.search(clean):
+                    return ""  # garbage from re-render, treat as empty
                 return buf
 
             time.sleep(0.05)
@@ -319,8 +341,7 @@ class ClaudePtySession:
             self._proc.write("/status\r")
             status_raw = self._capture_status()
             self._proc.write("\x1b")   # dismiss status overlay
-            time.sleep(0.1)
-            self._drain_queue()
+            self._drain_until_silent(timeout=2.0, silence=0.3)
 
             # 2. Resize trick + /usage
             try:
@@ -329,13 +350,12 @@ class ClaudePtySession:
                 self._proc.setwinsize(PTY_ROWS, PTY_COLS)
             except Exception:
                 pass
-            time.sleep(0.05)
+            self._drain_until_silent(timeout=2.0, silence=0.3)
 
             self._proc.write("/usage\r")
             usage_raw = self._capture_usage()
             self._proc.write("\x1b")   # dismiss usage overlay, return to prompt
-            time.sleep(0.1)
-            self._drain_queue()
+            self._drain_until_silent(timeout=1.0, silence=0.2)
 
             status_clean = strip_ansi(status_raw)
             usage_clean = strip_ansi(usage_raw)

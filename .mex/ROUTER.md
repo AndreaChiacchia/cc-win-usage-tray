@@ -51,10 +51,15 @@ Then read this file fully before doing anything else in this session.
 **Known Issues:**
 - None tracked currently. Check git log for recent fixes.
 
+**Resilience (event loop):**
+- `_poll_ui_queue()` drains a `queue.Queue` every 100ms on the main thread. Background threads post callbacks via `_dispatch(cb)` instead of `root.after(0, ...)`. This avoids the Windows `PostMessage` delivery problem where cross-thread `root.after` messages are silently delayed when all Tk windows are withdrawn, which caused auto-refresh to stall when the popup was hidden.
+
 **Resilience:**
 - PTY auto-respawn on hang: after `MAX_CONSECUTIVE_FAILURES` (3) consecutive empty-output refreshes, `_ensure_alive()` force-kills and respawns the PTY. Counter resets on success. Logged via `[PTY]` prefix in debug output.
 
 **Recently completed (latest first):**
+- Bug fix: garbled /usage capture — resize-trick re-render bled into capture buffer; replaced fixed `time.sleep()` calls in `query_usage()` with `_drain_until_silent()`; added garbage guard in `_capture_usage()` to reject buffers with no usage headers
+- Bug fix: auto-refresh stalling when popup hidden — replaced cross-thread `root.after(0, ...)` in worker callbacks with `queue.Queue` polled by `_poll_ui_queue()` every 100ms; removed `_keepalive()`
 - Feature: double-click tray icon opens usage popup — `default=True` on "Show Usage" `pystray.MenuItem` in `_build_tray_menu`; item also appears bold in the context menu per Windows convention
 - Bug fix: peak label in popup bottom bar now refreshes every 60s via `_tick_relative` (was stale if popup stayed open across a boundary)
 - Feature: peak/off-peak transition toast notifications — fires once per transition via `check_peak_transition()` in `notifier.py`, called from `_on_usage_success` and once at startup (silent init)

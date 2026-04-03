@@ -60,11 +60,14 @@ If the debug log shows text with usage info but sections aren't displayed:
 
 Add a temporary `print()` in `parse_usage()` or run it directly against the captured `raw_text` from the DB to see what the parser sees.
 
-### 5. Check the resize trick
+### 5. Check the resize trick / re-render bleed
 
-If `/usage` returns empty or clipped text, the resize trick in `query_usage()` may need adjustment:
-- Current: `setwinsize(PTY_ROWS, PTY_COLS - 1)` → 50ms → `setwinsize(PTY_ROWS, PTY_COLS)`
-- Try increasing the sleep between resize calls, or increase `PTY_COLS`.
+If `/usage` returns garbled content (banner + status text, zero usage headers), the re-render output from the resize trick bled into the `/usage` capture buffer.
+
+- The resize forces a full screen re-render. Fixed `time.sleep()` after resize isn't enough — if the terminal is slow, re-render output arrives after `/usage\r` is sent.
+- **Fix in place (v1.13+):** `_drain_until_silent()` replaces all fixed sleeps in `query_usage()`. It polls until 0.3s of silence before sending `/usage\r`, ensuring re-render output is fully consumed first.
+- A garbage guard in `_capture_usage()` also rejects buffers with no usage headers (returns `""` → increments `_consecutive_failures` → triggers auto-respawn after 3 failures).
+- If bleed still happens: increase the `silence` threshold in the `_drain_until_silent()` call after the resize trick (currently 0.3s).
 
 ### 6. Check account change handling
 
@@ -77,7 +80,7 @@ If usage shows the wrong account's data:
 | Symptom | Likely cause |
 |---|---|
 | "Could not identify account from /status output" | `/status` returned no email-like string |
-| "Empty output from Claude Code" | PTY returned nothing from `/usage`; resize trick failed |
+| "Empty output from Claude Code" | PTY returned nothing from `/usage`; resize trick failed or re-render bleed (see §5) |
 | "Could not parse usage data — unexpected format" | No section headers found; CLI output format changed |
 | "Could not extract any usage sections" | Headers found but no `X% used` matched |
 | App stuck on loading icon | PTY timeout; CLI unresponsive; check debug log |

@@ -100,7 +100,7 @@ class ClaudeUsageTray:
 
     def _build_tray_menu(self) -> pystray.Menu:
         return pystray.Menu(
-            pystray.MenuItem("Show Usage", self._show_usage_menu),
+            pystray.MenuItem("Show Usage", self._show_usage_menu, default=True),
             pystray.MenuItem("Refresh Now", self._refresh_menu),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Themes", self._open_themes_menu),

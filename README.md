@@ -2,7 +2,7 @@
 
 Sits in the Windows system tray and shows your [Claude Code](https://claude.ai/code) token budgets — session, weekly, and extra — in a compact themed popup. Fires toast notifications when usage crosses a threshold.
 
-![version](https://img.shields.io/badge/version-v1.13.0-blue)
+![version](https://img.shields.io/badge/version-v1.14.0-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/build-python%203.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)
@@ -104,9 +104,9 @@ src/
 
 | Thread | Role |
 |--------|------|
-| Tkinter main thread | All UI updates via `root.after(0, ...)` |
+| Tkinter main thread | All UI updates; drains a `queue.Queue` every 100ms via `_poll_ui_queue()` |
 | PTY reader thread | Reads raw PTY output; state machine runs on a daemon thread |
-| pystray thread | Marshals menu callbacks back to the Tkinter thread |
+| pystray thread | Marshals menu callbacks to the main thread via the UI queue |
 
 ---
 

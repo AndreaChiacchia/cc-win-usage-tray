@@ -81,6 +81,8 @@ If usage shows the wrong account's data:
 | "Could not parse usage data — unexpected format" | No section headers found; CLI output format changed |
 | "Could not extract any usage sections" | Headers found but no `X% used` matched |
 | App stuck on loading icon | PTY timeout; CLI unresponsive; check debug log |
+| `[PTY] Empty output (N/3)` in console | PTY alive but hung; auto-respawn will trigger at N=3 |
+| `[PTY] Unresponsive after 3 consecutive failures — forcing respawn` | Auto-respawn fired; next refresh should succeed |
 
 ## Update Scaffold
 

@@ -13,6 +13,8 @@ PTY_TIMEOUT_S = 45
 PTY_COLS = 68
 PTY_ROWS = 24
 
+MAX_CONSECUTIVE_FAILURES = 3   # force-respawn PTY after this many timeouts
+
 # Color thresholds (percentage)
 COLOR_GREEN_MAX = 50    # 0-49%  -> green
 COLOR_YELLOW_MAX = 80   # 50-79% -> yellow

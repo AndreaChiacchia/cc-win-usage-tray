@@ -8,7 +8,7 @@ import tempfile
 import threading
 import queue
 
-from config import CLAUDE_CMD, PTY_TIMEOUT_S, PTY_COLS, PTY_ROWS
+from config import CLAUDE_CMD, PTY_TIMEOUT_S, PTY_COLS, PTY_ROWS, MAX_CONSECUTIVE_FAILURES
 
 # Strip ANSI escape sequences
 _ANSI_RE = re.compile(r'\x1b\[[^@-~]*[@-~]|\x1b[^[]|\x1b\].*?\x07|\r')
@@ -84,6 +84,7 @@ class ClaudePtySession:
         self._reader: threading.Thread | None = None
         self._lock = threading.Lock()
         self._ready = False
+        self._consecutive_failures = 0
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -193,8 +194,14 @@ class ClaudePtySession:
         return result
 
     def _ensure_alive(self):
-        """Re-spawn if the PTY process has died."""
+        """Re-spawn if the PTY process has died or is unresponsive."""
         if self._proc is None or not self._ready:
+            self._spawn()
+            return
+        if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            print(f"[PTY] Unresponsive after {self._consecutive_failures} consecutive failures — forcing respawn")
+            self._consecutive_failures = 0
+            self._cleanup_proc()
             self._spawn()
             return
         try:
@@ -330,7 +337,16 @@ class ClaudePtySession:
             time.sleep(0.1)
             self._drain_queue()
 
-            return strip_ansi(status_raw), strip_ansi(usage_raw)
+            status_clean = strip_ansi(status_raw)
+            usage_clean = strip_ansi(usage_raw)
+
+            if len(status_clean.strip()) < 10 and len(usage_clean.strip()) < 10:
+                self._consecutive_failures += 1
+                print(f"[PTY] Empty output ({self._consecutive_failures}/{MAX_CONSECUTIVE_FAILURES})")
+            else:
+                self._consecutive_failures = 0
+
+            return status_clean, usage_clean
 
     def close(self):
         """Clean shutdown — send /exit and terminate the PTY."""

@@ -58,6 +58,7 @@ Then read this file fully before doing anything else in this session.
 - PTY auto-respawn on hang: after `MAX_CONSECUTIVE_FAILURES` (3) consecutive empty-output refreshes, `_ensure_alive()` force-kills and respawns the PTY. Counter resets on success. Logged via `[PTY]` prefix in debug output.
 
 **Recently completed (latest first):**
+- Release: v1.15.2 tagged on `main` after fixing clipped weekly reset prefixes in `/usage`
 - Bug fix: usage parser now handles clipped weekly reset prefixes like `usedset Apr 24...` when Claude omits the Stats/Extra tail on a repeated `/usage` render
 - Release: v1.15.1 tagged on `main` after narrowing the Claude usage fix back to `/usage` only
 - Bug fix: narrow Claude 2.1.117 usage fix back to `/usage` only - kept Stats-aware parser changes, restored `/status` parsing and PTY capture timing

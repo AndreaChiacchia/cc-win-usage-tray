@@ -2,7 +2,7 @@
 
 Sits in the Windows system tray and shows your [Claude Code](https://claude.ai/code) token budgets — session, weekly, and extra — in a compact themed popup. Fires toast notifications when usage crosses a threshold.
 
-![version](https://img.shields.io/badge/version-v1.15.1-blue)
+![version](https://img.shields.io/badge/version-v1.15.2-blue)
 ![platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![python](https://img.shields.io/badge/build-python%203.10%2B-blue)
 ![license](https://img.shields.io/badge/license-Apache%202.0-green)

@@ -61,6 +61,7 @@ If the debug log shows text with usage info but sections aren't displayed, or if
 - Claude can clip the leading `Re` from a rerendered weekly reset (`70%usedset Apr 24...`); the parser treats `set`/`sets` as a reset prefix and normalizes it back to `Resets`
 - If Claude appends `Stats` copy after the usage blocks, the parser trims it using the same boundary list that excludes `Esc to cancel`, `Refreshing`, `Scanning local sessions`, and `What's contributing to your limits usage?`
 - `/status` should still parse the same way as before; this pattern is only about `/usage`
+- `_capture_usage()` now waits for `USAGE_CAPTURE_SETTLE_S` of silence after the first usage header, capped by `USAGE_CAPTURE_MAX_AFTER_HEADER_S`, so an early return should no longer drop the trailing `Extra usage` block
 
 Add a temporary `print()` in `parse_usage()` or run it directly against the captured `raw_text` from the DB to see what the parser sees.
 
@@ -90,6 +91,8 @@ If usage shows the wrong account's data:
 | Duplicate `Current session` / `Current week` sections | Claude rendered `/usage` twice; parser should now keep the later valid render |
 | `reset_info` contains `What's contributing...` | New Claude Stats text leaked past the old section boundary; update the boundary list |
 | Current week percentage updates but reset is blank | Latest rerender may contain a clipped prefix like `usedset Apr 24`; update reset-prefix/value parsing |
+| `Extra usage` disappears intermittently | `/usage` capture returned before the tail of the render; check `_capture_usage()` settle timing |
+| Old account had `Extra usage`, new `/usage` drops it, and the raw text does not say `not enabled` / `unavailable` / `disabled` | The missing-extra guard should reject the refresh once, retry in a fresh PTY, then keep the previous stored account data if the retry still omits Extra |
 | App stuck on loading icon | PTY timeout; CLI unresponsive; check debug log |
 | `[PTY] Empty output (N/3)` in console | PTY alive but hung; auto-respawn will trigger at N=3 |
 | `[PTY] Unresponsive after 3 consecutive failures — forcing respawn` | Auto-respawn fired; next refresh should succeed |

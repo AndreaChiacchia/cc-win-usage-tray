@@ -8,7 +8,16 @@ import tempfile
 import threading
 import queue
 
-from config import CLAUDE_CMD, PTY_TIMEOUT_S, PTY_COLS, PTY_ROWS, MAX_CONSECUTIVE_FAILURES
+from config import (
+    CLAUDE_CMD,
+    PTY_TIMEOUT_S,
+    PTY_USAGE_ROWS,
+    PTY_COLS,
+    PTY_ROWS,
+    MAX_CONSECUTIVE_FAILURES,
+    USAGE_CAPTURE_SETTLE_S,
+    USAGE_CAPTURE_MAX_AFTER_HEADER_S,
+)
 
 # Strip ANSI escape sequences
 _ANSI_RE = re.compile(r'\x1b\[[^@-~]*[@-~]|\x1b[^[]|\x1b\].*?\x07|\r')
@@ -193,6 +202,29 @@ class ClaudePtySession:
                 break
         return result
 
+    def _collect_until_silent(self, timeout: float, silence: float) -> str:
+        """Collect queue data until it has been silent for `silence` seconds."""
+        deadline = time.monotonic() + timeout
+        last_data_at = time.monotonic()
+        collected = ""
+        while time.monotonic() < deadline:
+            got_data = False
+            while True:
+                try:
+                    chunk = self._data_queue.get_nowait()
+                    if chunk is None:
+                        return collected
+                    collected += chunk
+                    got_data = True
+                except queue.Empty:
+                    break
+            if got_data:
+                last_data_at = time.monotonic()
+            if (time.monotonic() - last_data_at) >= silence:
+                return collected
+            time.sleep(0.02)
+        return collected
+
     def _drain_until_silent(self, timeout: float = 2.0, silence: float = 0.3):
         """Drain queue until no new output for `silence` seconds. Caps at `timeout`."""
         deadline = time.monotonic() + timeout
@@ -309,9 +341,10 @@ class ClaudePtySession:
             silence = time.monotonic() - last_data_at
 
             if _USAGE_HEADER_RE.search(clean):
-                # Wait a bit more for the full output, then drain
-                time.sleep(0.4)
-                buf += self._drain_to_str()
+                buf += self._collect_until_silent(
+                    timeout=USAGE_CAPTURE_MAX_AFTER_HEADER_S,
+                    silence=USAGE_CAPTURE_SETTLE_S,
+                )
                 return buf
 
             if silence > 3.0 and len(clean.strip()) > 10:
@@ -345,17 +378,25 @@ class ClaudePtySession:
 
             # 2. Resize trick + /usage
             try:
-                self._proc.setwinsize(PTY_ROWS, PTY_COLS - 1)
+                self._proc.setwinsize(PTY_USAGE_ROWS, PTY_COLS - 1)
                 time.sleep(0.05)
-                self._proc.setwinsize(PTY_ROWS, PTY_COLS)
+                self._proc.setwinsize(PTY_USAGE_ROWS, PTY_COLS)
             except Exception:
                 pass
             self._drain_until_silent(timeout=2.0, silence=0.3)
 
             self._proc.write("/usage\r")
-            usage_raw = self._capture_usage()
-            self._proc.write("\x1b")   # dismiss usage overlay, return to prompt
-            self._drain_until_silent(timeout=1.0, silence=0.2)
+            try:
+                usage_raw = self._capture_usage()
+            finally:
+                try:
+                    self._proc.write("\x1b")   # dismiss usage overlay, return to prompt
+                finally:
+                    try:
+                        self._proc.setwinsize(PTY_ROWS, PTY_COLS)
+                    except Exception:
+                        pass
+                    self._drain_until_silent(timeout=1.0, silence=0.2)
 
             status_clean = strip_ansi(status_raw)
             usage_clean = strip_ansi(usage_raw)

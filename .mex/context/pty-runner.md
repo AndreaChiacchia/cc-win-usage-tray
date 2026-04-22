@@ -26,7 +26,7 @@ last_updated: 2026-04-22
 
 ## Session Lifecycle
 
-`ClaudePtySession` is a **module-level singleton** accessed via `_get_session()`. It spawns the Claude CLI once and reuses the PTY session across all refresh cycles.
+`ClaudePtySession` is a module-level singleton accessed via `_get_session()`. It spawns the Claude CLI once and reuses the PTY session across all refresh cycles.
 
 **Spawn flow:**
 1. `winpty.PtyProcess.spawn(claude_path, dimensions=(PTY_ROWS, PTY_COLS), cwd=tmpdir, env=...)`
@@ -36,33 +36,35 @@ last_updated: 2026-04-22
 5. `_ready = True` after banner; session is now usable
 
 **Query flow (per refresh):**
-1. `_ensure_alive()` — re-spawns if PTY process died
+1. `_ensure_alive()` -> re-spawns if PTY process died
 2. Drain queue to discard any accumulated output
-3. Send `/status\r` → `_capture_status()` — returns when email is seen, silence >0.5s, or 2s elapsed
+3. Send `/status\r` -> `_capture_status()` -> returns when email is seen, silence >0.5s, or 2s elapsed
 4. Send `\x1b` to dismiss the status overlay
-5. **Resize trick** — `setwinsize(ROWS, COLS-1)` then `setwinsize(ROWS, COLS)` — forces Claude to re-render `/usage` output (without this, output is sometimes empty or clipped)
-6. Send `/usage\r` → `_capture_usage()` — returns when `_USAGE_HEADER_RE` matches + 0.4s wait, or silence >3s
-7. Send `\x1b` to dismiss usage overlay
+5. Resize trick -> `setwinsize(PTY_USAGE_ROWS, COLS-1)` then `setwinsize(PTY_USAGE_ROWS, COLS)` -> forces Claude to re-render `/usage` output (without this, output is sometimes empty or clipped)
+6. Send `/usage\r` -> `_capture_usage()` -> returns when `_USAGE_HEADER_RE` matches and the render has been silent for `USAGE_CAPTURE_SETTLE_S`, capped by `USAGE_CAPTURE_MAX_AFTER_HEADER_S`
+7. Send `\x1b` to dismiss usage overlay, then restore the baseline terminal size with `setwinsize(PTY_ROWS, PTY_COLS)` so the prompt returns to the normal 24-row viewport
 8. Return `strip_ansi(status_raw), strip_ansi(usage_raw)`
 
 ## Key Constants (config.py)
 
-- `PTY_TIMEOUT_S = 45` — global deadline for all capture operations
-- `PTY_COLS = 68`, `PTY_ROWS = 24` — terminal dimensions; match what the CLI expects
-- `_BANNER_FALLBACK_S = 8.0` — in `claude_runner.py`; max wait for banner before proceeding anyway
+- `PTY_TIMEOUT_S = 45` - global deadline for all capture operations
+- `PTY_COLS = 68`, `PTY_ROWS = 24` - baseline terminal dimensions; match what the CLI expects
+- `PTY_USAGE_ROWS = 40` - taller temporary viewport used only for `/usage` so Claude has room to render `Extra usage`
+- `_BANNER_FALLBACK_S = 8.0` - in `claude_runner.py`; max wait for banner before proceeding anyway
 
 ## Non-obvious Gotchas
 
-- **Resize trick is mandatory.** Without the `setwinsize` call before `/usage`, the PTY sometimes delivers empty or partial output because Claude re-renders based on terminal size change events.
-- **Recent `/usage` output may repeat itself.** Claude Code 2.1.117 can append `Stats` copy and emit two usage renders back-to-back; `usage_parser.py` keeps the latest section per label while trimming anything after the real usage blocks. Some rerenders omit the Stats/Extra block and can clip the weekly reset prefix (`usedset Apr 24...`), so reset parsing is intentionally tolerant of `set`/`sets` and bounds the value to date/time shapes.
-- **Trust dialog detection is regex-based on condensed text.** The trust dialog uses cursor-positioning ANSI sequences; when stripped, words run together (e.g., `trustthisfolder`). `_TRUST_PROMPT_RE` matches this condensed form.
-- **Account change forces session restart.** If `/status` returns a different email than the previous refresh, `force_restart_session()` is called and `token_history.scan_blocking()` is flushed for the outgoing account before re-querying.
-- **`_lock` serializes concurrent calls.** `query_usage()` holds `self._lock` for the full duration — no parallel queries on the same session.
-- **Tmpdir CWD.** The PTY is spawned in a `tempfile.mkdtemp()` dir so Claude doesn't ask about trusting the source directory on every spawn. This tmpdir is cleaned up on `_cleanup_proc()`.
-- **EOF from queue signals process death.** The reader thread puts `None` into the queue on `EOFError`; capture loops treat `None` as a termination signal.
+- Resize trick is mandatory. Without the `setwinsize` call before `/usage`, the PTY sometimes delivers empty or partial output because Claude re-renders based on terminal size change events.
+- `/usage` uses the taller `PTY_USAGE_ROWS` viewport, then the runner restores `PTY_ROWS` after dismissing the overlay so the prompt does not stay in the expanded size.
+- Recent `/usage` output may repeat itself. Claude Code 2.1.117 can append `Stats` copy and emit two usage renders back-to-back; `usage_parser.py` keeps the latest section per label while trimming anything after the real usage blocks. Some rerenders omit the Stats/Extra block and can clip the weekly reset prefix (`usedset Apr 24...`), so reset parsing is intentionally tolerant of `set`/`sets` and bounds the value to date/time shapes. The `/usage` capture now waits for settle time before returning, because `Extra usage` is often the last rendered block.
+- Trust dialog detection is regex-based on condensed text. The trust dialog uses cursor-positioning ANSI sequences; when stripped, words run together (e.g. `trustthisfolder`). `_TRUST_PROMPT_RE` matches this condensed form.
+- Account change forces session restart. If `/status` returns a different email than the previous refresh, `force_restart_session()` is called and `token_history.scan_blocking()` is flushed for the outgoing account before re-querying.
+- `_lock` serializes concurrent calls. `query_usage()` holds `self._lock` for the full duration - no parallel queries on the same session.
+- Tmpdir CWD. The PTY is spawned in a `tempfile.mkdtemp()` dir so Claude doesn't ask about trusting the source directory on every spawn. This tmpdir is cleaned up on `_cleanup_proc()`.
+- EOF from queue signals process death. The reader thread puts `None` into the queue on `EOFError`; capture loops treat `None` as a termination signal.
 
 ## Recovery
 
 If the PTY process dies mid-session:
-- `_ensure_alive()` detects `not proc.isalive()` → calls `_cleanup_proc()` → calls `_spawn()` again
+- `_ensure_alive()` detects `not proc.isalive()` -> calls `_cleanup_proc()` -> calls `_spawn()` again
 - The module-level `force_restart_session()` kills and nulls `_session` so the next `_get_session()` call creates a fresh one

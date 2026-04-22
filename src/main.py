@@ -11,7 +11,7 @@ from datetime import datetime
 
 import db  # initialise DB (and run JSON migration) before anything else touches storage
 
-from claude_runner import run_usage_threaded
+from claude_runner import force_restart_session, run_usage_threaded
 from time_utils import parse_reset_datetime
 from usage_parser import parse_usage, parse_email, UsageData, AccountUsage
 import paths
@@ -47,6 +47,27 @@ def _apply_expired_resets(accounts: dict) -> bool:
             acc.last_updated = now.isoformat()
             any_changed = True
     return any_changed
+
+
+def _has_extra_usage(account: AccountUsage | None) -> bool:
+    if account is None:
+        return False
+    return any(section.label == "Extra usage" for section in account.usage.sections)
+
+
+def _raw_says_extra_disabled(raw_text: str) -> bool:
+    text = (raw_text or "").lower()
+    if "extra usage" not in text:
+        return False
+    return any(phrase in text for phrase in ("not enabled", "unavailable", "disabled"))
+
+
+def _is_missing_expected_extra(old_account: AccountUsage | None, new_usage: UsageData) -> bool:
+    if not _has_extra_usage(old_account):
+        return False
+    if any(section.label == "Extra usage" for section in new_usage.sections):
+        return False
+    return not _raw_says_extra_disabled(new_usage.raw_text)
 
 
 class ClaudeUsageTray:
@@ -163,7 +184,7 @@ class ClaudeUsageTray:
     # Data refresh
     # ------------------------------------------------------------------
 
-    def _trigger_refresh(self):
+    def _trigger_refresh(self, retry_missing_extra: bool = True):
         if self._refreshing:
             return
         self._refreshing = True
@@ -176,11 +197,11 @@ class ClaudeUsageTray:
             self._tray_icon.title = "Claude Usage — Loading..."
 
         run_usage_threaded(
-            callback=self._on_usage_success,
+            callback=lambda status, usage: self._on_usage_success(status, usage, retry_missing_extra),
             error_callback=self._on_usage_error,
         )
 
-    def _on_usage_success(self, status_text: str, usage_text: str):
+    def _on_usage_success(self, status_text: str, usage_text: str, retry_missing_extra: bool = True):
         # --- DEBUG: dump raw text to file ---
         try:
             with open(paths.DEBUG_LOG_FILE, "w", encoding="utf-8") as f:
@@ -198,7 +219,6 @@ class ClaudeUsageTray:
             prev = getattr(self, '_active_email', None)
             if prev and prev != email:
                 token_history.scan_blocking(prev)  # flush tokens for outgoing account
-                from claude_runner import force_restart_session
                 force_restart_session()
                 self._active_email = email
                 self._refreshing = False
@@ -216,6 +236,30 @@ class ClaudeUsageTray:
 
             # Load OLD accounts BEFORE saving new data
             old_accounts = storage.load_all_accounts()
+            old_account = old_accounts.get(email)
+
+            if _is_missing_expected_extra(old_account, usage_data):
+                try:
+                    with open(paths.DEBUG_LOG_FILE, "a", encoding="utf-8") as f:
+                        if retry_missing_extra:
+                            f.write("\n\n[GUARD] Missing expected Extra usage; retrying with fresh PTY\n")
+                        else:
+                            f.write("\n\n[GUARD] Missing expected Extra usage after retry; kept previous account data\n")
+                except Exception:
+                    pass
+
+                if retry_missing_extra:
+                    force_restart_session()
+                    self._refreshing = False
+                    self._dispatch(lambda: self._trigger_refresh(retry_missing_extra=False))
+                    return
+
+                all_accounts = old_accounts
+                self.popup._last_refresh_error = "Incomplete /usage output; kept previous Extra usage"
+                for email_key, acc in all_accounts.items():
+                    acc.is_active = (email_key == email)
+                self._dispatch(lambda: self._apply_data(all_accounts))
+                return
 
             account = AccountUsage(
                 email=email,

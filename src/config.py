@@ -9,7 +9,12 @@ REFRESH_INTERVAL_MS = 300_000
 # PTY timeout in seconds
 PTY_TIMEOUT_S = 45
 
+# /usage capture settle timing
+USAGE_CAPTURE_SETTLE_S = 0.8
+USAGE_CAPTURE_MAX_AFTER_HEADER_S = 4.0
+
 # PTY terminal dimensions (match cc-usage-bar)
+PTY_USAGE_ROWS = 40
 PTY_COLS = 68
 PTY_ROWS = 24
 

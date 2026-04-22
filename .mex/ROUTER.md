@@ -58,6 +58,7 @@ Then read this file fully before doing anything else in this session.
 - PTY auto-respawn on hang: after `MAX_CONSECUTIVE_FAILURES` (3) consecutive empty-output refreshes, `_ensure_alive()` force-kills and respawns the PTY. Counter resets on success. Logged via `[PTY]` prefix in debug output.
 
 **Recently completed (latest first):**
+- Release: v1.15.1 tagged on `main` after narrowing the Claude usage fix back to `/usage` only
 - Bug fix: narrow Claude 2.1.117 usage fix back to `/usage` only - kept Stats-aware parser changes, restored `/status` parsing and PTY capture timing
 - Bug fix: usage parser now ignores Claude 2.1.117 Stats text and duplicate `/usage` renders, keeping the latest valid section per label
 - Bug fix: garbled /usage capture — resize-trick re-render bled into capture buffer; replaced fixed `time.sleep()` calls in `query_usage()` with `_drain_until_silent()`; added garbage guard in `_capture_usage()` to reject buffers with no usage headers

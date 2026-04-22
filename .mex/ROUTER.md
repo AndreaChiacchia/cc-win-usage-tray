@@ -58,6 +58,7 @@ Then read this file fully before doing anything else in this session.
 - PTY auto-respawn on hang: after `MAX_CONSECUTIVE_FAILURES` (3) consecutive empty-output refreshes, `_ensure_alive()` force-kills and respawns the PTY. Counter resets on success. Logged via `[PTY]` prefix in debug output.
 
 **Recently completed (latest first):**
+- Release: v1.15.3 tagged on `main` after rejecting partial Extra usage refreshes
 - Bug fix: refresh now rejects incomplete `/usage` captures that drop expected Extra usage, retries once in a taller PTY viewport, and preserves the previous account data on retry failure
 - Bug fix: `/usage` capture now waits for settle time so intermittent Extra usage tails are not dropped
 - Release: v1.15.2 tagged on `main` after fixing clipped weekly reset prefixes in `/usage`

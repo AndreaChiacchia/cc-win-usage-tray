@@ -27,22 +27,97 @@ class AccountUsage:
     is_active: bool = False
 
 
-# Regex patterns
 _EMAIL_RE = re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
-_SECTION_HEADER_RE = re.compile(
-    r'(Current session|Current week|Extra usage)',
-    re.IGNORECASE
+_LABELED_EMAIL_RE = re.compile(
+    r'(?<![A-Za-z])Email:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)',
+    re.IGNORECASE,
 )
-_PERCENTAGE_RE = re.compile(r'(\d+)%\s*used')
-# More inclusive regex for reset info, catching misspelled 'Reses' and missing spaces
-_RESET_RE = re.compile(r'(?:Resets?|Reses?|Starts?|Ends?|Next reset|Refreshes?|Refresh|Resetting)\s*(.*)', re.IGNORECASE)
-_SPENT_RE = re.compile(r'(\$[\d.]+\s*/\s*\$[\d.]+\s*spent)')
+_ORG_EMAIL_RE = re.compile(
+    r'(?<![A-Za-z])OrganizationEmail:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)',
+    re.IGNORECASE,
+)
+_SECTION_LABELS = (
+    ("Current session", re.compile(r'Current session', re.IGNORECASE)),
+    ("Current week", re.compile(r'Current week(?:\s*\(all models\))?', re.IGNORECASE)),
+    ("Extra usage", re.compile(r'Extra usage', re.IGNORECASE)),
+)
+_SECTION_BOUNDARY_RE = re.compile(
+    r"Current session|Current week(?:\s*\(all models\))?|Extra usage|Esc to cancel|"
+    r"What's contributing to your limits usage\?|"
+    r"Approximate, based on local sessions on this machine|"
+    r"Scanning local sessions|Refreshing|Last 24h|"
+    r"Status\s*Config\s*Usage\s*Stats|StatusConfig",
+    re.IGNORECASE,
+)
+_PERCENTAGE_RE = re.compile(r'(\d{1,3})%\s*used', re.IGNORECASE)
+_RESET_PREFIX_RE = re.compile(
+    r'(?:Resets?|Reses?|Starts?|Ends?|Next reset|Resetting|Refreshes?(?!ing)|Refresh(?!ing))\s*',
+    re.IGNORECASE,
+)
+_SPENT_RE = re.compile(r'(\$[\d.]+\s*/\s*\$[\d.]+\s*spent)', re.IGNORECASE)
 
 
 def parse_email(text: str) -> str | None:
-    """Extract email address from /status output."""
+    """Extract the account email from /status output."""
+    for pattern in (_LABELED_EMAIL_RE, _ORG_EMAIL_RE):
+        match = pattern.search(text)
+        if match:
+            return match.group(1)
     match = _EMAIL_RE.search(text)
     return match.group(1) if match else None
+
+
+def _normalize_whitespace(text: str) -> str:
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def _canonical_label(raw_label: str) -> str:
+    lowered = raw_label.lower()
+    if lowered.startswith("current session"):
+        return "Current session"
+    if lowered.startswith("current week"):
+        return "Current week"
+    if lowered.startswith("extra usage"):
+        return "Extra usage"
+    return raw_label.strip()
+
+
+def _find_boundary(text: str, start: int) -> int:
+    match = _SECTION_BOUNDARY_RE.search(text, start)
+    return match.start() if match else len(text)
+
+
+def _parse_section(section_text: str, label: str) -> UsageSection | None:
+    pct_match = _PERCENTAGE_RE.search(section_text)
+    if not pct_match:
+        return None
+
+    percentage = max(0, min(100, int(pct_match.group(1))))
+    spent_match = _SPENT_RE.search(section_text)
+    spent_info = spent_match.group(1).strip() if spent_match else None
+
+    reset_info = ""
+    remainder = section_text[pct_match.end():]
+    prefix_match = _RESET_PREFIX_RE.search(remainder)
+    if prefix_match:
+        reset_value_start = prefix_match.end()
+        reset_value_end = _find_boundary(remainder, reset_value_start)
+        reset_value = remainder[reset_value_start:reset_value_end].strip()
+        reset_value = re.sub(r'\s+', ' ', reset_value).strip(" .")
+        if reset_value:
+            reset_info = f"Resets {reset_value}"
+        else:
+            reset_info = "Resets"
+
+    if label == "Extra usage" and "not enabled" in section_text.lower() and not pct_match:
+        return None
+
+    return UsageSection(
+        label=label,
+        percentage=percentage,
+        reset_info=reset_info,
+        spent_info=spent_info,
+    )
 
 
 def parse_usage(text: str) -> UsageData:
@@ -54,74 +129,37 @@ def parse_usage(text: str) -> UsageData:
         return UsageData(error="Empty output from Claude Code")
 
     data = UsageData(raw_text=text)
+    normalized = _normalize_whitespace(text)
+    if not normalized:
+        return UsageData(raw_text=text, error="Could not parse usage data â€” unexpected format")
 
-    # Find all section headers and their positions
-    headers = list(_SECTION_HEADER_RE.finditer(text))
-    if not headers:
+    matches: list[tuple[int, int, str]] = []
+    for label, pattern in _SECTION_LABELS:
+        for match in pattern.finditer(normalized):
+            matches.append((match.start(), match.end(), label))
+
+    if not matches:
         return UsageData(
             raw_text=text,
-            error="Could not parse usage data — unexpected format"
+            error="Could not parse usage data â€” unexpected format"
         )
 
-    # Filter out "Extra usage" headers whose section contains "not enabled" and no percentage
-    filtered_headers = []
-    for i, match in enumerate(headers):
-        if "Extra usage" in match.group(1):
-            start = match.start()
-            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
-            section_text = text[start:end]
-            if "not enabled" in section_text.lower() and not _PERCENTAGE_RE.search(section_text):
-                continue
-        filtered_headers.append(match)
-    headers = filtered_headers
+    matches.sort(key=lambda item: item[0])
 
-    # Extract all sections bounded by headers
-    sections = []
-    for i, match in enumerate(headers):
-        raw_label = match.group(1)
-        if "Current week" in raw_label:
-            label = "Current week"
-        elif "Current session" in raw_label:
-            label = "Current session"
-        elif "Extra usage" in raw_label:
-            label = "Extra usage"
-        else:
-            label = raw_label.strip()
+    parsed_by_label: dict[str, UsageSection] = {}
+    for index, (start, match_end, label) in enumerate(matches):
+        next_start = matches[index + 1][0] if index + 1 < len(matches) else len(normalized)
+        end = min(next_start, _find_boundary(normalized, match_end))
+        section_text = normalized[start:end].strip()
+        parsed = _parse_section(section_text, _canonical_label(label))
+        if parsed is not None:
+            parsed_by_label[parsed.label] = parsed
 
-        start = match.start()
-        end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
-        section_text = text[start:end]
-
-        pct_match = _PERCENTAGE_RE.search(section_text)
-        if not pct_match:
-            continue
-        percentage = max(0, min(100, int(pct_match.group(1))))
-
-        spent_match = _SPENT_RE.search(section_text)
-        spent_info = spent_match.group(1).strip() if spent_match else None
-
-        # Extract reset info within this specific bounded section
-        reset_info = ""
-        res_match = _RESET_RE.search(section_text)
-        if res_match:
-            # We use the full match group and strip any trailing cruft that might have leaked in
-            reset_info = res_match.group(0).strip().replace("Esc to cancel", "").strip()
-            # If the literal word "Reses" was matched, clean it up for display
-            if reset_info.lower().startswith("reses"):
-                reset_info = "Resets" + reset_info[5:]
-            
-            # Ensure there is a space after 'Resets' if followed directly by a number or character
-            reset_info = re.sub(r'^(Resets)(?=[^\s])', r'\1 ', reset_info, flags=re.IGNORECASE)
-
-            # Strip any trailing "Extra usage..." text that may have leaked from raw PTY stream
-            reset_info = re.sub(r'Extra usage.*$', '', reset_info, flags=re.IGNORECASE).strip()
-
-        sections.append(UsageSection(
-            label=label,
-            percentage=percentage,
-            reset_info=reset_info,
-            spent_info=spent_info,
-        ))
+    sections: list[UsageSection] = []
+    for label in ("Current session", "Current week", "Extra usage"):
+        section = parsed_by_label.get(label)
+        if section is not None:
+            sections.append(section)
 
     data.sections = sections
     if not data.sections:

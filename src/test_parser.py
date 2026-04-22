@@ -1,65 +1,80 @@
-"""Quick smoke test for the usage parser — no CLI required."""
+"""Quick smoke test for the usage parser - no CLI required."""
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from usage_parser import parse_usage, parse_email
 
+
 SAMPLE_STATUS = """
-Logged in as user@example.com (Free plan)
+Login method: ClaudePro account
+OrganizationEmail: org@example.com
+Email: user@example.com
 CLI Version: 0.1.0
 """
 
 SAMPLE_USAGE = """
-Current session    ███████████████████████████████████               70%usedReses1:59pm (Europe/Rome)Current week (all models)█████████████████████▌                            43%usedResets Mar 20, 2:59pm (Europe/Rome)Esc to cancel
+Current session 70%usedReses1:59pm (Europe/Rome)Current week (all models)43%usedResets Mar 20, 2:59pm (Europe/Rome)Esc to cancel
 """
 
 SAMPLE_USAGE_WITH_EXTRA = """
-Current session    ███████████████████████████████████               70%usedResets 1:59pm (Europe/Rome)Current week█████████████████████▌                            43%usedResets Mar 20, 2:59pm (Europe/Rome)Extra usage██████████████████████████████████████████        85%used$1.01 / $20.00 spentResets Apr 1Esc to cancel
+Current session 70%usedResets 1:59pm (Europe/Rome)Current week43%usedResets Mar 20, 2:59pm (Europe/Rome)Extra usage85%used$1.01 / $20.00 spentResets Apr 1Esc to cancel
 """
 
-# Test parse_email
-email = parse_email(SAMPLE_STATUS)
-if email != "user@example.com":
-    print(f"ERROR: Expected user@example.com, got {email}")
-    sys.exit(1)
-print(f"Email parsed OK: {email}\n")
+SAMPLE_USAGE_DUPLICATE_RENDER = """
+Status Config Usage Stats
+Current session 1%usedResets 1pm (Europe/Rome)
+Current week (all models)55%usedResets Apr 24, 9am (Europe/Rome)
+What's contributing to your limits usage? Approximate, based on local sessions on this machine - does not include other devices or claude.ai
+Scanning local sessions...
+Refreshing...
+Status Config Usage Stats
+Current session 1%usedResets 1pm (Europe/Rome)
+Current week (all models)55%usedResets Apr 24, 9am (Europe/Rome)
+Last 24h - 38% of your usage came from subagent-heavy sessions.
+"""
 
-# Test parse_usage
-data = parse_usage(SAMPLE_USAGE)
 
-if data.error:
-    print(f"ERROR: {data.error}")
-    sys.exit(1)
+def _assert_section(section, label, percentage, reset_info, spent_info=None):
+    assert section.label == label, f"Expected label {label}, got {section.label}"
+    assert section.percentage == percentage, f"Expected {percentage}%, got {section.percentage}%"
+    assert section.reset_info == reset_info, f"Expected reset_info {reset_info!r}, got {section.reset_info!r}"
+    assert section.spent_info == spent_info, f"Expected spent_info {spent_info!r}, got {section.spent_info!r}"
 
-print(f"Parsed {len(data.sections)} sections:\n")
-for s in data.sections:
-    print(f"  [{s.percentage:3d}%] {s.label}")
-    print(f"         {s.reset_info}")
-    if s.spent_info:
-        print(f"         {s.spent_info}")
-    print()
 
-print("Parser OK")
+def main():
+    email = parse_email(SAMPLE_STATUS)
+    assert email == "user@example.com", f"Expected user@example.com, got {email}"
+    print(f"Email parsed OK: {email}")
 
-# Test parse_usage with Extra usage section
-data2 = parse_usage(SAMPLE_USAGE_WITH_EXTRA)
+    data = parse_usage(SAMPLE_USAGE)
+    assert not data.error, data.error
+    assert len(data.sections) == 2, f"Expected 2 sections, got {len(data.sections)}"
+    _assert_section(data.sections[0], "Current session", 70, "Resets 1:59pm (Europe/Rome)")
+    _assert_section(data.sections[1], "Current week", 43, "Resets Mar 20, 2:59pm (Europe/Rome)")
+    print("Compact usage sample parsed OK")
 
-if data2.error:
-    print(f"ERROR (extra usage test): {data2.error}")
-    sys.exit(1)
+    data2 = parse_usage(SAMPLE_USAGE_WITH_EXTRA)
+    assert not data2.error, data2.error
+    assert len(data2.sections) == 3, f"Expected 3 sections, got {len(data2.sections)}"
+    extra = next((s for s in data2.sections if s.label == "Extra usage"), None)
+    assert extra is not None, "Extra usage section not found"
+    _assert_section(extra, "Extra usage", 85, "Resets Apr 1", "$1.01 / $20.00 spent")
+    print("Extra usage sample parsed OK")
 
-if len(data2.sections) != 3:
-    print(f"ERROR: Expected 3 sections (including Extra usage), got {len(data2.sections)}")
-    for s in data2.sections:
-        print(f"  [{s.percentage:3d}%] {s.label}")
-    sys.exit(1)
+    data3 = parse_usage(SAMPLE_USAGE_DUPLICATE_RENDER)
+    assert not data3.error, data3.error
+    assert len(data3.sections) == 2, f"Expected 2 sections, got {len(data3.sections)}"
+    _assert_section(data3.sections[0], "Current session", 1, "Resets 1pm (Europe/Rome)")
+    _assert_section(data3.sections[1], "Current week", 55, "Resets Apr 24, 9am (Europe/Rome)")
+    assert "What's contributing" not in data3.sections[1].reset_info
+    assert "subagent-heavy" not in data3.sections[1].reset_info
+    print("Duplicate render sample parsed OK")
 
-extra = next((s for s in data2.sections if s.label == "Extra usage"), None)
-if extra is None:
-    print("ERROR: Extra usage section not found")
-    sys.exit(1)
+    print("Parser smoke test passed")
 
-print(f"Extra usage section OK: {extra.percentage}% | {extra.spent_info} | {extra.reset_info}")
-print("Parser with Extra usage OK")
+
+if __name__ == "__main__":
+    main()

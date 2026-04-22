@@ -53,10 +53,11 @@ If PTY spawns but never completes:
 
 ### 4. Check parse regex
 
-If the debug log shows text with usage info but sections aren't displayed:
-- `_SECTION_HEADER_RE` matches `Current session|Current week|Extra usage` (case-insensitive)
-- `_PERCENTAGE_RE` matches `(\d+)%\s*used`
-- `_RESET_RE` matches reset/refresh keywords; handles misspelled `Reses` variant
+If the debug log shows text with usage info but sections aren't displayed, or if the parser returns duplicate sections / polluted reset text:
+- `usage_parser.py` now looks for `Current session|Current week(?: \(all models\))?|Extra usage` and keeps the last valid section per label
+- `_PERCENTAGE_RE` matches `(\d{1,3})%\s*used`
+- `_RESET_PREFIX_RE` matches reset/refresh keywords; handles misspelled `Reses` and glued forms like `Resets1pm`
+- If Claude appends `Stats` copy after the usage blocks, the parser trims it using the same boundary list that excludes `Esc to cancel`, `Refreshing`, `Scanning local sessions`, and `What's contributing to your limits usage?`
 
 Add a temporary `print()` in `parse_usage()` or run it directly against the captured `raw_text` from the DB to see what the parser sees.
 
@@ -82,7 +83,9 @@ If usage shows the wrong account's data:
 | "Could not identify account from /status output" | `/status` returned no email-like string |
 | "Empty output from Claude Code" | PTY returned nothing from `/usage`; resize trick failed or re-render bleed (see §5) |
 | "Could not parse usage data — unexpected format" | No section headers found; CLI output format changed |
-| "Could not extract any usage sections" | Headers found but no `X% used` matched |
+| "Could not extract any usage sections" | Headers found but no `X% used` matched, or the capture only contains stats noise |
+| Duplicate `Current session` / `Current week` sections | Claude rendered `/usage` twice; parser should now keep the later valid render |
+| `reset_info` contains `What's contributing...` | New Claude Stats text leaked past the old section boundary; update the boundary list |
 | App stuck on loading icon | PTY timeout; CLI unresponsive; check debug log |
 | `[PTY] Empty output (N/3)` in console | PTY alive but hung; auto-respawn will trigger at N=3 |
 | `[PTY] Unresponsive after 3 consecutive failures — forcing respawn` | Auto-respawn fired; next refresh should succeed |

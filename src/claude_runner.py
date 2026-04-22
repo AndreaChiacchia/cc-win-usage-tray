@@ -193,25 +193,28 @@ class ClaudePtySession:
                 break
         return result
 
-    def _drain_until_silent(self, timeout: float = 2.0, silence: float = 0.3):
+    def _drain_until_silent(self, timeout: float = 2.0, silence: float = 0.3) -> str:
         """Drain queue until no new output for `silence` seconds. Caps at `timeout`."""
         deadline = time.monotonic() + timeout
         last_data_at = time.monotonic()
+        drained = ""
         while time.monotonic() < deadline:
             got_data = False
             while True:
                 try:
                     chunk = self._data_queue.get_nowait()
                     if chunk is None:
-                        return
+                        return drained
+                    drained += chunk
                     got_data = True
                 except queue.Empty:
                     break
             if got_data:
                 last_data_at = time.monotonic()
             if (time.monotonic() - last_data_at) >= silence:
-                return
+                return drained
             time.sleep(0.02)
+        return drained
 
     def _ensure_alive(self):
         """Re-spawn if the PTY process has died or is unresponsive."""
@@ -309,9 +312,8 @@ class ClaudePtySession:
             silence = time.monotonic() - last_data_at
 
             if _USAGE_HEADER_RE.search(clean):
-                # Wait a bit more for the full output, then drain
-                time.sleep(0.4)
-                buf += self._drain_to_str()
+                # Wait for the render to settle before collecting the rest.
+                buf += self._drain_until_silent(timeout=3.0, silence=0.8)
                 return buf
 
             if silence > 3.0 and len(clean.strip()) > 10:

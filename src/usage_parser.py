@@ -28,14 +28,6 @@ class AccountUsage:
 
 
 _EMAIL_RE = re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
-_LABELED_EMAIL_RE = re.compile(
-    r'(?<![A-Za-z])Email:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)',
-    re.IGNORECASE,
-)
-_ORG_EMAIL_RE = re.compile(
-    r'(?<![A-Za-z])OrganizationEmail:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)',
-    re.IGNORECASE,
-)
 _SECTION_LABELS = (
     ("Current session", re.compile(r'Current session', re.IGNORECASE)),
     ("Current week", re.compile(r'Current week(?:\s*\(all models\))?', re.IGNORECASE)),
@@ -58,11 +50,7 @@ _SPENT_RE = re.compile(r'(\$[\d.]+\s*/\s*\$[\d.]+\s*spent)', re.IGNORECASE)
 
 
 def parse_email(text: str) -> str | None:
-    """Extract the account email from /status output."""
-    for pattern in (_LABELED_EMAIL_RE, _ORG_EMAIL_RE):
-        match = pattern.search(text)
-        if match:
-            return match.group(1)
+    """Extract email address from /status output."""
     match = _EMAIL_RE.search(text)
     return match.group(1) if match else None
 

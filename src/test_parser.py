@@ -9,18 +9,16 @@ from usage_parser import parse_usage, parse_email
 
 
 SAMPLE_STATUS = """
-Login method: ClaudePro account
-OrganizationEmail: org@example.com
-Email: user@example.com
+Logged in as user@example.com (Free plan)
 CLI Version: 0.1.0
 """
 
 SAMPLE_USAGE = """
-Current session 70%usedReses1:59pm (Europe/Rome)Current week (all models)43%usedResets Mar 20, 2:59pm (Europe/Rome)Esc to cancel
+Current session    ███████████████████████████████████               70%usedReses1:59pm (Europe/Rome)Current week (all models)█████████████████████▌                            43%usedResets Mar 20, 2:59pm (Europe/Rome)Esc to cancel
 """
 
 SAMPLE_USAGE_WITH_EXTRA = """
-Current session 70%usedResets 1:59pm (Europe/Rome)Current week43%usedResets Mar 20, 2:59pm (Europe/Rome)Extra usage85%used$1.01 / $20.00 spentResets Apr 1Esc to cancel
+Current session    ███████████████████████████████████               70%usedResets 1:59pm (Europe/Rome)Current week█████████████████████▌                            43%usedResets Mar 20, 2:59pm (Europe/Rome)Extra usage██████████████████████████████████████████        85%used$1.01 / $20.00 spentResets Apr 1Esc to cancel
 """
 
 SAMPLE_USAGE_DUPLICATE_RENDER = """

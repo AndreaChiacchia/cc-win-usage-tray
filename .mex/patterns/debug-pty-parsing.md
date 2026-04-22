@@ -58,6 +58,7 @@ If the debug log shows text with usage info but sections aren't displayed, or if
 - `_PERCENTAGE_RE` matches `(\d{1,3})%\s*used`
 - `_RESET_PREFIX_RE` matches reset/refresh keywords; handles misspelled `Reses` and glued forms like `Resets1pm`
 - If Claude appends `Stats` copy after the usage blocks, the parser trims it using the same boundary list that excludes `Esc to cancel`, `Refreshing`, `Scanning local sessions`, and `What's contributing to your limits usage?`
+- `/status` should still parse the same way as before; this pattern is only about `/usage`
 
 Add a temporary `print()` in `parse_usage()` or run it directly against the captured `raw_text` from the DB to see what the parser sees.
 

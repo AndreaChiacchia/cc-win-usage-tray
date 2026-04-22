@@ -41,7 +41,7 @@ last_updated: 2026-03-30
 3. Send `/status\r` → `_capture_status()` — returns when email is seen, silence >0.5s, or 2s elapsed
 4. Send `\x1b` to dismiss the status overlay
 5. **Resize trick** — `setwinsize(ROWS, COLS-1)` then `setwinsize(ROWS, COLS)` — forces Claude to re-render `/usage` output (without this, output is sometimes empty or clipped)
-6. Send `/usage\r` → `_capture_usage()` — returns when `_USAGE_HEADER_RE` matches and the stream stays quiet, or silence >3s
+6. Send `/usage\r` → `_capture_usage()` — returns when `_USAGE_HEADER_RE` matches + 0.4s wait, or silence >3s
 7. Send `\x1b` to dismiss usage overlay
 8. Return `strip_ansi(status_raw), strip_ansi(usage_raw)`
 
@@ -54,7 +54,7 @@ last_updated: 2026-03-30
 ## Non-obvious Gotchas
 
 - **Resize trick is mandatory.** Without the `setwinsize` call before `/usage`, the PTY sometimes delivers empty or partial output because Claude re-renders based on terminal size change events.
-- **Recent `/usage` output may repeat itself.** Claude Code 2.1.117 can append `Stats` copy and emit two usage renders back-to-back; `_capture_usage()` now waits for header + silence, and `usage_parser.py` keeps the latest section per label while trimming anything after the real usage blocks.
+- **Recent `/usage` output may repeat itself.** Claude Code 2.1.117 can append `Stats` copy and emit two usage renders back-to-back; `usage_parser.py` keeps the latest section per label while trimming anything after the real usage blocks.
 - **Trust dialog detection is regex-based on condensed text.** The trust dialog uses cursor-positioning ANSI sequences; when stripped, words run together (e.g., `trustthisfolder`). `_TRUST_PROMPT_RE` matches this condensed form.
 - **Account change forces session restart.** If `/status` returns a different email than the previous refresh, `force_restart_session()` is called and `token_history.scan_blocking()` is flushed for the outgoing account before re-querying.
 - **`_lock` serializes concurrent calls.** `query_usage()` holds `self._lock` for the full duration — no parallel queries on the same session.

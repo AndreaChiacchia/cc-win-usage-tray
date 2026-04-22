@@ -43,7 +43,19 @@ _SECTION_BOUNDARY_RE = re.compile(
 )
 _PERCENTAGE_RE = re.compile(r'(\d{1,3})%\s*used', re.IGNORECASE)
 _RESET_PREFIX_RE = re.compile(
-    r'(?:Resets?|Reses?|Starts?|Ends?|Next reset|Resetting|Refreshes?(?!ing)|Refresh(?!ing))\s*',
+    r'(?:Resets?|Reses?|sets?|Starts?|Ends?|Next reset|Resetting|Refreshes?(?!ing)|Refresh(?!ing))\s*',
+    re.IGNORECASE,
+)
+_RESET_VALUE_RE = re.compile(
+    r'('
+    r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+    r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Sept(?:ember)?|Oct(?:ober)?|'
+    r'Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?'
+    r'(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?'
+    r'|\d{1,2}(?::\d{2})?\s*(?:am|pm)'
+    r'|\d{1,2}:\d{2}'
+    r')'
+    r'(?:\s*\([^)]+\))?',
     re.IGNORECASE,
 )
 _SPENT_RE = re.compile(r'(\$[\d.]+\s*/\s*\$[\d.]+\s*spent)', re.IGNORECASE)
@@ -88,11 +100,11 @@ def _parse_section(section_text: str, label: str) -> UsageSection | None:
     remainder = section_text[pct_match.end():]
     prefix_match = _RESET_PREFIX_RE.search(remainder)
     if prefix_match:
-        reset_value_start = prefix_match.end()
-        reset_value_end = _find_boundary(remainder, reset_value_start)
-        reset_value = remainder[reset_value_start:reset_value_end].strip()
-        reset_value = re.sub(r'\s+', ' ', reset_value).strip(" .")
-        if reset_value:
+        reset_value_text = remainder[prefix_match.end():]
+        reset_value_match = _RESET_VALUE_RE.match(reset_value_text)
+        if reset_value_match:
+            reset_value = reset_value_match.group(0)
+            reset_value = re.sub(r'\s+', ' ', reset_value).strip(" .")
             reset_info = f"Resets {reset_value}"
         else:
             reset_info = "Resets"

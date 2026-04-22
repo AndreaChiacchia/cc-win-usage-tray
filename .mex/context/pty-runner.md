@@ -19,7 +19,7 @@ edges:
     condition: when checking pywinpty version constraints or library details
   - target: patterns/debug-pty-parsing.md
     condition: when PTY hangs, returns empty output, or parsing fails
-last_updated: 2026-03-30
+last_updated: 2026-04-22
 ---
 
 # PTY Runner
@@ -54,7 +54,7 @@ last_updated: 2026-03-30
 ## Non-obvious Gotchas
 
 - **Resize trick is mandatory.** Without the `setwinsize` call before `/usage`, the PTY sometimes delivers empty or partial output because Claude re-renders based on terminal size change events.
-- **Recent `/usage` output may repeat itself.** Claude Code 2.1.117 can append `Stats` copy and emit two usage renders back-to-back; `usage_parser.py` keeps the latest section per label while trimming anything after the real usage blocks.
+- **Recent `/usage` output may repeat itself.** Claude Code 2.1.117 can append `Stats` copy and emit two usage renders back-to-back; `usage_parser.py` keeps the latest section per label while trimming anything after the real usage blocks. Some rerenders omit the Stats/Extra block and can clip the weekly reset prefix (`usedset Apr 24...`), so reset parsing is intentionally tolerant of `set`/`sets` and bounds the value to date/time shapes.
 - **Trust dialog detection is regex-based on condensed text.** The trust dialog uses cursor-positioning ANSI sequences; when stripped, words run together (e.g., `trustthisfolder`). `_TRUST_PROMPT_RE` matches this condensed form.
 - **Account change forces session restart.** If `/status` returns a different email than the previous refresh, `force_restart_session()` is called and `token_history.scan_blocking()` is flushed for the outgoing account before re-querying.
 - **`_lock` serializes concurrent calls.** `query_usage()` holds `self._lock` for the full duration — no parallel queries on the same session.

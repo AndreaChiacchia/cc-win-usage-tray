@@ -34,6 +34,17 @@ Current week (all models)55%usedResets Apr 24, 9am (Europe/Rome)
 Last 24h - 38% of your usage came from subagent-heavy sessions.
 """
 
+SAMPLE_USAGE_CLIPPED_WEEK_RESET = """
+Status Config Usage Stats
+Current session 4%usedResets 6pm (Europe/Rome)
+Current week (all models)63% used Resets Apr 24, 8am (Europe/Rome)
+Refreshing...
+Esc to cancel
+Status Config Usage Stats
+Current session 55%usedResets 6pm (Europe/Rome)
+Current week (all models)70%usedset Apr 24, 8am (Europe/Rome)Claude Team
+"""
+
 
 def _assert_section(section, label, percentage, reset_info, spent_info=None):
     assert section.label == label, f"Expected label {label}, got {section.label}"
@@ -70,6 +81,14 @@ def main():
     assert "What's contributing" not in data3.sections[1].reset_info
     assert "subagent-heavy" not in data3.sections[1].reset_info
     print("Duplicate render sample parsed OK")
+
+    data4 = parse_usage(SAMPLE_USAGE_CLIPPED_WEEK_RESET)
+    assert not data4.error, data4.error
+    assert len(data4.sections) == 2, f"Expected 2 sections, got {len(data4.sections)}"
+    _assert_section(data4.sections[0], "Current session", 55, "Resets 6pm (Europe/Rome)")
+    _assert_section(data4.sections[1], "Current week", 70, "Resets Apr 24, 8am (Europe/Rome)")
+    assert "Claude Team" not in data4.sections[1].reset_info
+    print("Clipped week reset sample parsed OK")
 
     print("Parser smoke test passed")
 
